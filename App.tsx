@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowRight, Sparkles, Cpu, Search, RefreshCw, Zap, Brain, Image as ImageIcon, Camera, X } from './components/icons';
+import { ArrowRight, Sparkles, Cpu, Search, RefreshCw, Zap, Brain, Image as ImageIcon, Camera, X, Sun, Moon } from './components/icons';
 import { HistoryItem, ModelMode } from './types';
 import { solveQuery } from './services/geminiService';
 import { ResultCard } from './components/ResultCard';
@@ -7,14 +7,38 @@ import { SAMPLE_QUERIES, APP_NAME } from './constants';
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
+type Theme = 'light' | 'dark';
+
 const App: React.FC = () => {
   const [query, setQuery] = useState('');
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [modelMode, setModelMode] = useState<ModelMode>('pro');
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
+  const [theme, setTheme] = useState<Theme>('light');
+  
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Initialize theme based on system preference
+  useEffect(() => {
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      setTheme('dark');
+    }
+  }, []);
+
+  // Update DOM class when theme changes
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -72,21 +96,29 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900 font-sans">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col text-slate-900 dark:text-slate-100 font-sans transition-colors duration-300">
       
       {/* Header */}
-      <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 z-50 flex items-center px-4 sm:px-8 justify-between">
+      <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 z-50 flex items-center px-4 sm:px-8 justify-between transition-colors">
         <div className="flex items-center space-x-2">
           <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
             <Cpu className="w-5 h-5" />
           </div>
-          <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-700 to-violet-700">
+          <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-700 to-violet-700 dark:from-indigo-400 dark:to-violet-400">
             {APP_NAME}
           </span>
         </div>
-        <div className="hidden sm:flex items-center text-sm text-slate-500 space-x-4">
-            <span className="flex items-center"><Sparkles className="w-3 h-3 mr-1 text-amber-500" /> Pro Intelligence</span>
-            <span className="flex items-center"><RefreshCw className="w-3 h-3 mr-1 text-emerald-500" /> Real-time Data</span>
+        <div className="flex items-center space-x-4">
+          <div className="hidden sm:flex items-center text-sm text-slate-500 dark:text-slate-400 space-x-4">
+              <span className="flex items-center"><Sparkles className="w-3 h-3 mr-1 text-amber-500" /> Pro Intelligence</span>
+              <span className="flex items-center"><RefreshCw className="w-3 h-3 mr-1 text-emerald-500" /> Real-time Data</span>
+          </div>
+          <button 
+            onClick={toggleTheme}
+            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
+          >
+            {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+          </button>
         </div>
       </header>
 
@@ -97,10 +129,10 @@ const App: React.FC = () => {
         {history.length === 0 && (
           <div className="flex flex-col items-center justify-center min-h-[50vh] text-center space-y-8 animate-fade-in-up">
             <div className="space-y-4 max-w-2xl">
-              <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 tracking-tight">
-                What do you want to <span className="text-indigo-600">know</span>?
+              <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white tracking-tight">
+                What do you want to <span className="text-indigo-600 dark:text-indigo-400">know</span>?
               </h1>
-              <p className="text-lg text-slate-600">
+              <p className="text-lg text-slate-600 dark:text-slate-400">
                 Compute answers, analyze data, and visualize concepts with Gemini Intelligence.
               </p>
             </div>
@@ -110,9 +142,9 @@ const App: React.FC = () => {
                 <button
                   key={i}
                   onClick={() => handleSubmit(undefined, q)}
-                  className="p-4 bg-white rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all duration-200 text-sm text-slate-700 flex items-start group"
+                  className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 hover:shadow-md transition-all duration-200 text-sm text-slate-700 dark:text-slate-300 flex items-start group"
                 >
-                  <Search className="w-4 h-4 mr-3 mt-0.5 text-slate-400 group-hover:text-indigo-500" />
+                  <Search className="w-4 h-4 mr-3 mt-0.5 text-slate-400 group-hover:text-indigo-500 dark:group-hover:text-indigo-400" />
                   <span>{q}</span>
                 </button>
               ))}
@@ -123,7 +155,7 @@ const App: React.FC = () => {
         {/* Results Feed */}
         <div className="space-y-6">
           {history.map((item) => (
-            <ResultCard key={item.id} item={item} />
+            <ResultCard key={item.id} item={item} isDarkMode={theme === 'dark'} />
           ))}
           <div ref={bottomRef} />
         </div>
@@ -131,21 +163,21 @@ const App: React.FC = () => {
       </main>
 
       {/* Sticky Footer Input */}
-      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent pt-4 pb-6 px-4 z-40">
+      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent dark:from-slate-900 dark:via-slate-900 pt-4 pb-6 px-4 z-40 transition-colors">
         <div className="max-w-3xl mx-auto">
           {/* Controls Bar */}
           <div className="flex justify-between items-end mb-2 px-1">
-             <div className="flex space-x-1 bg-white p-1 rounded-full border border-slate-200 shadow-sm">
+             <div className="flex space-x-1 bg-white dark:bg-slate-800 p-1 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm">
                 <button 
                   onClick={() => setModelMode('pro')}
-                  className={`flex items-center space-x-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${modelMode === 'pro' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}
+                  className={`flex items-center space-x-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${modelMode === 'pro' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
                 >
                   <Brain className="w-3.5 h-3.5" />
                   <span>Pro Reason</span>
                 </button>
                 <button 
                   onClick={() => setModelMode('flash')}
-                  className={`flex items-center space-x-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${modelMode === 'flash' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}
+                  className={`flex items-center space-x-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${modelMode === 'flash' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
                 >
                   <Zap className="w-3.5 h-3.5" />
                   <span>Flash Fast</span>
@@ -155,7 +187,7 @@ const App: React.FC = () => {
              {/* Image Preview if attached */}
              {attachedImage && (
                <div className="relative group">
-                 <img src={attachedImage} alt="Preview" className="h-16 w-16 object-cover rounded-lg border-2 border-white shadow-md" />
+                 <img src={attachedImage} alt="Preview" className="h-16 w-16 object-cover rounded-lg border-2 border-white dark:border-slate-700 shadow-md" />
                  <button 
                    onClick={clearImage}
                    className="absolute -top-2 -right-2 bg-slate-800 text-white p-0.5 rounded-full hover:bg-red-500 transition-colors"
@@ -170,11 +202,11 @@ const App: React.FC = () => {
             onSubmit={(e) => handleSubmit(e)} 
             className={`relative group transition-all duration-300 ${isProcessing ? 'opacity-80 pointer-events-none' : ''}`}
           >
-            <div className="relative flex items-center bg-white rounded-2xl border border-slate-300 shadow-2xl shadow-indigo-500/10 focus-within:ring-2 focus-within:ring-indigo-500/50 focus-within:border-indigo-500 transition-all overflow-hidden">
+            <div className="relative flex items-center bg-white dark:bg-slate-800 rounded-2xl border border-slate-300 dark:border-slate-600 shadow-2xl shadow-indigo-500/10 dark:shadow-black/40 focus-within:ring-2 focus-within:ring-indigo-500/50 focus-within:border-indigo-500 transition-all overflow-hidden">
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="pl-4 pr-3 py-4 text-slate-400 hover:text-indigo-600 transition-colors border-r border-slate-100"
+                  className="pl-4 pr-3 py-4 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors border-r border-slate-100 dark:border-slate-700"
                   title="Upload image for analysis"
                 >
                   <Camera className="w-5 h-5" />
@@ -192,7 +224,7 @@ const App: React.FC = () => {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder={modelMode === 'pro' ? "Ask complex questions (Math, Physics, Data)..." : "Ask quick questions..."}
-                  className="w-full h-16 px-4 bg-transparent text-lg focus:outline-none"
+                  className="w-full h-16 px-4 bg-transparent text-lg text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none"
                   disabled={isProcessing}
                 />
                 
@@ -200,7 +232,7 @@ const App: React.FC = () => {
                     <button
                     type="submit"
                     disabled={(!query.trim() && !attachedImage) || isProcessing}
-                    className="aspect-square p-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-xl flex items-center justify-center transition-colors shadow-lg shadow-indigo-500/30"
+                    className="aspect-square p-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white rounded-xl flex items-center justify-center transition-colors shadow-lg shadow-indigo-500/30"
                     >
                     {isProcessing ? (
                         <RefreshCw className="w-5 h-5 animate-spin" />
@@ -212,7 +244,7 @@ const App: React.FC = () => {
             </div>
           </form>
           <div className="text-center mt-2">
-            <p className="text-xs text-slate-400 font-medium">
+            <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
                {modelMode === 'pro' ? 'Gemini 3 Pro (High Reasoning)' : 'Gemini 2.5 Flash (High Speed)'} • {attachedImage ? 'Image Analysis Active' : 'Text Input'}
             </p>
           </div>

@@ -14,7 +14,9 @@ import {
   Brain,
   Image,
   Camera,
-  Paperclip
+  Paperclip,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 export { 
@@ -32,5 +34,7 @@ export {
   Brain,
   Image,
   Camera,
-  Paperclip
+  Paperclip,
+  Sun,
+  Moon
 };
