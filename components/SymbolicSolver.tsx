@@ -4,7 +4,12 @@ import { parseMathCommand, MathCommand } from '../services/geminiService';
 import { LatexRenderer } from './LatexRenderer';
 
 declare const nerdamer: any;
-declare const Algebrite: any;
+
+// Helper to safely access Algebrite from window object
+const getAlgebrite = () => {
+  // @ts-ignore
+  return window.Algebrite || (window as any).algebrite;
+};
 
 interface Props {
   isOpen: boolean;
@@ -111,7 +116,9 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
 
       // --- ENGINE 2: Algebrite (Fallback - Robust CAS) ---
       if (!solved) {
-         if (typeof Algebrite === 'undefined') {
+         const AlgebriteEngine = getAlgebrite();
+         
+         if (!AlgebriteEngine) {
              console.warn("Algebrite library not loaded or failed to load.");
          } else {
             try {
@@ -147,7 +154,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
               }
 
               // Algebrite returns a string (e.g. "sin(x)") or "Stop: ..." on error
-              const res = Algebrite.run(algString);
+              const res = AlgebriteEngine.run(algString);
               
               if (!res || res.startsWith("Stop")) {
                 throw new Error(`Algebrite returned error: ${res}`);
@@ -168,7 +175,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
               
               // Try to get float value from Algebrite result
               try {
-                 const val = Algebrite.run(`float(${res})`);
+                 const val = AlgebriteEngine.run(`float(${res})`);
                  if (val && !isNaN(parseFloat(val))) {
                    setDecimalResult(val);
                  }
