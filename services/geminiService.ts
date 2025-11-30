@@ -227,7 +227,11 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
 
     Fields:
     - operation: The operation type.
-    - expression: The mathematical expression (e.g., "sin(x)", "x^2 + 2x"). Format it for standard computer algebra systems (e.g. use "*" for multiplication).
+    - expression: The mathematical expression.
+      * CRITICAL: Do NOT include 'y=' or 'f(x)='. Just the right-hand side.
+      * CRITICAL: Do NOT include 'dx' or 'dt' in integrals. Just the integrand.
+      * Example: "integrate sin(x) dx" -> expression: "sin(x)"
+      * Example: "y = x^2 + 2" -> expression: "x^2 + 2"
     - variable: The independent variable (e.g., "x", "n"). Default to "x".
     - start: (Optional) Lower bound for integrals or sums.
     - end: (Optional) Upper bound for integrals or sums. Use "Infinity" for infinity.
@@ -251,14 +255,18 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
   });
 
   let text = response.text || '';
-  text = text.trim();
-  text = text.replace(/^```[a-z]*\s*/i, '').replace(/\s*```$/, '');
   
   try {
-    return JSON.parse(text) as MathCommand;
+    // Regex to extract JSON object (handling conversational wrappers)
+    const jsonMatch = text.match(/{[\s\S]*}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]) as MathCommand;
+    } else {
+      throw new Error("No JSON found");
+    }
   } catch (e) {
     console.error("Failed to parse math command JSON", text);
-    // Fallback simple evaluate
+    // Fallback simple evaluate with raw query, though likely to fail in pure symbolic mode
     return { operation: 'evaluate', expression: query };
   }
 };

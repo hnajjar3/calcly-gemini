@@ -119,6 +119,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                if (start !== undefined && end !== undefined) {
                  algString = `defint(${expression},${variable},${start},${end})`;
                } else {
+                 // Algebrite typically uses 'integral' for indefinite
                  algString = `integral(${expression},${variable})`;
                }
                break;
@@ -126,7 +127,6 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                algString = `d(${expression},${variable})`;
                break;
              case 'solve':
-                // Algebrite roots
                 algString = `roots(${expression},${variable})`;
                 break;
              case 'sum':
@@ -136,30 +136,40 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
              case 'factor':
                 algString = `factor(${expression})`;
                 break;
+             case 'simplify':
+                algString = `simplify(${expression})`;
+                break;
              default:
                 algString = expression;
            }
 
+           // Algebrite returns a string (e.g. "sin(x)") or "Stop: ..." on error
            const res = Algebrite.run(algString);
            
-           if (!res) throw new Error("Algebrite returned null");
+           if (!res || res.startsWith("Stop")) {
+             throw new Error(`Algebrite returned error: ${res}`);
+           }
            
            // Convert Algebrite (ASCII/Text) result to LaTeX using Nerdamer's parser if possible, 
            // or fallback to basic string
            try {
               finalLatex = nerdamer(res).toTeX();
            } catch (e) {
-              finalLatex = res; // Fallback to raw string
+              // If Nerdamer can't parse the Algebrite result, just show it as text
+              // wrap in $$ to trigger display mode in renderer (though it might be plain text)
+              finalLatex = `\\text{${res}}`; 
            }
 
            setUsedEngine('Algebrite');
            solved = true;
            
            // Try to get float value from Algebrite result
-           const val = Algebrite.run(`float(${res})`);
-           if (!isNaN(parseFloat(val))) {
-             setDecimalResult(val);
-           }
+           try {
+              const val = Algebrite.run(`float(${res})`);
+              if (val && !isNaN(parseFloat(val))) {
+                setDecimalResult(val);
+              }
+           } catch(e) {}
 
          } catch (algError) {
            console.error("Algebrite failed:", algError);
