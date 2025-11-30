@@ -1,0 +1,165 @@
+
+import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { SolverResponse, ModelMode } from "../types";
+
+// Helper to ensure API key presence
+const getApiKey = (): string => {
+  const key = process.env.API_KEY;
+  if (!key) {
+    console.error("API_KEY is missing from environment variables.");
+    throw new Error("API Key not found. Please check your configuration.");
+  }
+  return key;
+};
+
+// Define the schema definition string for the prompt since we can't pass the object to config when using tools
+const schemaDefinition = `
+{
+  "type": "OBJECT",
+  "properties": {
+    "interpretation": { "type": "STRING", "description": "Concise restatement of query" },
+    "result": { "type": "STRING", "description": "Direct answer" },
+    "confidenceScore": { "type": "NUMBER" },
+    "sections": {
+      "type": "ARRAY",
+      "items": {
+        "type": "OBJECT",
+        "properties": {
+          "title": { "type": "STRING" },
+          "content": { "type": "STRING" },
+          "type": { "type": "STRING", "enum": ["text", "list", "code"] }
+        }
+      }
+    },
+    "chart": {
+      "type": "OBJECT",
+      "properties": {
+        "type": { "type": "STRING", "enum": ["line", "bar", "area", "scatter"] },
+        "title": { "type": "STRING" },
+        "xLabel": { "type": "STRING" },
+        "yLabel": { "type": "STRING" },
+        "seriesKeys": { "type": "ARRAY", "items": { "type": "STRING" } },
+        "data": { 
+           "type": "ARRAY", 
+           "items": { "type": "OBJECT", "description": "Data points with 'x' and series keys" } 
+        }
+      }
+    }
+  },
+  "required": ["interpretation", "result", "sections"]
+}
+`;
+
+export const solveQuery = async (
+  query: string, 
+  mode: ModelMode = 'pro',
+  imageBase64?: string
+): Promise<SolverResponse> => {
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+
+  // Prompt engineering to guide the model towards Wolfram-like behavior
+  // heavily emphasizing JSON output since we can't use responseMimeType: 'application/json' with tools
+  const systemInstruction = `
+    You are OmniSolver, an advanced computational intelligence engine similar to Wolfram Alpha.
+    Your goal is to provide precise, structured, and factual answers.
+    
+    RULES:
+    1.  **Interpretation**: Always clarify how you interpreted the user's input.
+    2.  **Visualization**: If the query involves math functions, statistical comparisons, or trends, YOU MUST generate a 'chart' object with at least 10-20 data points.
+        - For math functions (e.g., sin(x)), generate points within a reasonable range.
+        - For real-world data (e.g., GDP), use the 'googleSearch' tool to get accurate data points.
+        - Map your data values to 'value1', 'value2', etc., and list the corresponding names in 'seriesKeys'.
+    3.  **Accuracy**: Use the googleSearch tool if the query requires up-to-date information (news, stock prices, recent events) or factual data you might not have.
+    4.  **Format**: Return ONLY valid raw JSON matching the schema below. DO NOT wrap the JSON in markdown code blocks (e.g. \`\`\`json). Just return the raw JSON string.
+    5.  **Complexity**: If the query is complex math, show step-by-step reasoning in the 'sections'.
+    6.  **Images**: If an image is provided, analyze it thoroughly to answer the user's prompt.
+
+    SCHEMA:
+    ${schemaDefinition}
+  `;
+
+  // Select model based on mode
+  const modelName = mode === 'pro' ? 'gemini-3-pro-preview' : 'gemini-2.5-flash';
+  
+  // Configure thinking: High budget for Pro, disabled (0) for Flash for speed
+  const thinkingBudget = mode === 'pro' ? 4096 : 0;
+
+  try {
+    // Construct contents (Text + Optional Image)
+    const parts: any[] = [{ text: query }];
+    if (imageBase64) {
+      // Remove data URL prefix if present for clean base64
+      const base64Data = imageBase64.split(',')[1] || imageBase64;
+      parts.push({
+        inlineData: {
+          mimeType: "image/jpeg", // Assuming JPEG for simplicity, or we could detect
+          data: base64Data
+        }
+      });
+    }
+
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: { parts },
+      config: {
+        systemInstruction: systemInstruction,
+        // responseMimeType and responseSchema are REMOVED because they conflict with tools
+        tools: [{ googleSearch: {} }],
+        thinkingConfig: { thinkingBudget },
+      },
+    });
+
+    let text = response.text;
+    if (!text) throw new Error("No response received from Gemini.");
+
+    // Manual cleanup of potential markdown formatting since we aren't using strict JSON mode
+    text = text.trim();
+    if (text.startsWith("```json")) {
+      text = text.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+    } else if (text.startsWith("```")) {
+      text = text.replace(/^```\s*/, "").replace(/\s*```$/, "");
+    }
+
+    let parsed: SolverResponse;
+    try {
+      parsed = JSON.parse(text) as SolverResponse;
+    } catch (e) {
+      console.error("JSON Parse Error", text);
+      throw new Error("Failed to parse AI response. The model did not return valid JSON.");
+    }
+    
+    // Extract grounding metadata (Sources)
+    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    if (groundingChunks) {
+      const sources = groundingChunks
+        .map((chunk: any) => chunk.web)
+        .filter((web: any) => web && web.uri && web.title)
+        .map((web: any) => ({ title: web.title, uri: web.uri }));
+        
+      if (sources.length > 0) {
+        parsed.sources = sources;
+      }
+    }
+
+    // Data normalization for the chart if needed
+    if (parsed.chart && parsed.chart.data) {
+        // Ensure data points are clean (sometimes models output nulls for optional fields)
+        parsed.chart.data = parsed.chart.data.map(d => {
+            const clean: any = { x: d.x };
+            if (typeof d['value1'] === 'number') clean[parsed.chart!.seriesKeys[0] || 'value'] = d['value1'];
+            if (typeof d['value2'] === 'number') clean[parsed.chart!.seriesKeys[1] || 'value2'] = d['value2'];
+            if (typeof d['value3'] === 'number') clean[parsed.chart!.seriesKeys[2] || 'value3'] = d['value3'];
+            // Also copy over any keys that exactly match seriesKeys
+            parsed.chart!.seriesKeys.forEach(key => {
+               if (d[key] !== undefined) clean[key] = d[key];
+            });
+            return clean;
+        });
+    }
+
+    return parsed;
+  } catch (error) {
+    console.error("Gemini API Error:", error);
+    throw error;
+  }
+};

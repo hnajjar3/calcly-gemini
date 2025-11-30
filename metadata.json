@@ -1,0 +1,7 @@
+{
+  "name": "OmniSolver",
+  "description": "An AI-powered computational knowledge engine inspired by Wolfram Alpha. It uses Gemini 2.5/3 Pro to solve complex math, physics, coding, and general knowledge queries with structured visualizations.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
