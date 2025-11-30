@@ -114,11 +114,13 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
         const resultString = evaluated.text();
         addLog(`Nerdamer output: ${resultString}`);
 
-        // Check if output actually looks like it failed (contains operation names usually means it couldn't solve)
-        // e.g. "integrate(sin(x), x)" instead of "-cos(x)"
+        // FAILURE DETECTION
+        // 1. If result matches input command exactly (echoing), it likely failed.
+        // 2. If result still contains the operation keyword (e.g. 'integrate'), it failed.
         const failKeywords = ['integrate', 'defint', 'sum', 'limit'];
-        // Strict check: It fails only if the result still contains the function name AND it wasn't just 'evaluate'
-        const isFailure = operation !== 'evaluate' && failKeywords.some(kw => resultString.includes(kw) && resultString.includes('('));
+        const isFailure = 
+            (operation !== 'evaluate' && resultString === nerdString) || 
+            (operation !== 'evaluate' && failKeywords.some(kw => resultString.includes(kw) && resultString.includes('(')));
         
         if (isFailure) {
              throw new Error(`Nerdamer returned input (unsolved): ${resultString}`);
