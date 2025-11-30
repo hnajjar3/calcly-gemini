@@ -19,7 +19,10 @@ import {
   Sun,
   Moon,
   Calculator,
-  Delete
+  Delete,
+  Mic,
+  Square,
+  Volume2
 } from 'lucide-react';
 
 export { 
@@ -41,5 +44,8 @@ export {
   Sun,
   Moon,
   Calculator,
-  Delete
+  Delete,
+  Mic,
+  Square,
+  Volume2
 };

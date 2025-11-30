@@ -58,7 +58,8 @@ const schemaDefinition = `
 export const solveQuery = async (
   query: string, 
   mode: ModelMode = 'pro',
-  imageBase64?: string
+  imageBase64?: string,
+  audioBase64?: string
 ): Promise<SolverResponse> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
@@ -71,7 +72,7 @@ export const solveQuery = async (
     CRITICAL RULES:
     1.  **CONCISENESS**: Keep the 'result' field extremely tight and direct. Avoid conversational filler (e.g., "Here is the answer..."). Just state the fact or number.
     2.  **Brevity**: 'sections' should only be used for necessary details (steps, code, lists). Keep section content focused.
-    3.  **Interpretation**: Briefly clarify how you interpreted the query.
+    3.  **Interpretation**: Briefly clarify how you interpreted the query. If the input is audio, transcribe the core intent.
     4.  **Visualization**: If the query involves math functions, statistical comparisons, or trends, YOU MUST generate a 'chart' object with at least 10-20 data points.
         - For math functions (e.g., sin(x)), generate points within a reasonable range.
         - For real-world data (e.g., GDP), use the 'googleSearch' tool to get accurate data points.
@@ -80,7 +81,9 @@ export const solveQuery = async (
     6.  **Format**: Return ONLY valid raw JSON matching the schema below. DO NOT wrap the JSON in markdown code blocks.
     7.  **Math**: Use LaTeX formatting for all mathematical expressions. Wrap inline math in single dollar signs ($...$) and block math in double dollar signs ($$...$$).
     8.  **Code**: If code is requested or relevant, put it in a separate section with type "code". Do not mix code blocks inside "text" sections if possible.
-    9.  **Images**: If an image is provided, analyze it thoroughly to answer the user's prompt.
+    9.  **Multimodal**: 
+        - If an image is provided, analyze it thoroughly.
+        - If AUDIO is provided, listen to the speech carefully, interpret the problem described, and solve it.
     10. **Suggestions**: Generate 3-5 "smart actions" or follow-up questions. 
         - If Math: "Solve for x", "Graph it", "Show derivative", "Step-by-step".
         - If Data: "Compare with [Related]", "Show history", "Visualize".
@@ -97,17 +100,41 @@ export const solveQuery = async (
   const thinkingBudget = mode === 'pro' ? 4096 : 0;
 
   try {
-    // Construct contents (Text + Optional Image)
-    const parts: any[] = [{ text: query }];
+    // Construct contents (Text + Optional Image + Optional Audio)
+    const parts: any[] = [];
+    
+    // Add text part if present, or if it's purely audio we can add a prompt instruction
+    if (query) {
+      parts.push({ text: query });
+    } else if (audioBase64) {
+      parts.push({ text: "Please listen to the attached audio and solve the problem described." });
+    }
+
     if (imageBase64) {
       // Remove data URL prefix if present for clean base64
       const base64Data = imageBase64.split(',')[1] || imageBase64;
       parts.push({
         inlineData: {
-          mimeType: "image/jpeg", // Assuming JPEG for simplicity, or we could detect
+          mimeType: "image/jpeg", 
           data: base64Data
         }
       });
+    }
+
+    if (audioBase64) {
+       const base64Data = audioBase64.split(',')[1] || audioBase64;
+       // Assuming webm from MediaRecorder, Gemini handles generic containers well.
+       // We'll specify a common MIME type or let the model infer.
+       parts.push({
+         inlineData: {
+           mimeType: "audio/webm",
+           data: base64Data
+         }
+       });
+    }
+
+    if (parts.length === 0) {
+        throw new Error("No input provided (text, image, or audio).");
     }
 
     const response = await ai.models.generateContent({
@@ -115,7 +142,6 @@ export const solveQuery = async (
       contents: { parts },
       config: {
         systemInstruction: systemInstruction,
-        // responseMimeType and responseSchema are REMOVED because they conflict with tools
         tools: [{ googleSearch: {} }],
         thinkingConfig: { thinkingBudget },
       },

@@ -2,7 +2,7 @@
 import React, { useEffect, useRef } from 'react';
 import { HistoryItem } from '../types';
 import { ChartVisualization } from './ChartVisualization';
-import { Copy, Share2, Sparkles, AlertTriangle, Zap, Brain, Image as ImageIcon, ExternalLink, RefreshCw, ArrowRight, Lightbulb } from 'lucide-react';
+import { Copy, Share2, Sparkles, AlertTriangle, Zap, Brain, Image as ImageIcon, ExternalLink, RefreshCw, ArrowRight, Lightbulb, Mic, Volume2 } from 'lucide-react';
 
 // Access global KaTeX and Prism loaded via script tags in index.html
 declare const katex: any;
@@ -92,6 +92,15 @@ const LatexRenderer: React.FC<{ content: string; className?: string }> = ({ cont
 };
 
 export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSuggestionClick }) => {
+  const speakResult = () => {
+    if (!item.response?.result) return;
+    // Strip LaTeX delimiters for speech if possible, though speech synthesis might struggle with complex math.
+    // A simple clean up:
+    let text = item.response.result.replace(/\$\$/g, '').replace(/\$/g, '');
+    const utterance = new SpeechSynthesisUtterance(text);
+    window.speechSynthesis.speak(utterance);
+  };
+
   if (item.loading) {
     return (
       <div className="w-full max-w-4xl mx-auto mb-6 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 animate-pulse transition-colors">
@@ -152,6 +161,12 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSugge
                   Image
                 </span>
               )}
+               {item.audioBase64 && (
+                <span className="inline-flex items-center px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                  <Mic className="w-2.5 h-2.5 mr-1" />
+                  Voice
+                </span>
+              )}
               <span className="truncate">
                  <span className="font-medium text-indigo-600 dark:text-indigo-400 mr-1">Input:</span>
                  <LatexRenderer content={response.interpretation} />
@@ -179,9 +194,17 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSugge
         <div className="bg-slate-50/80 dark:bg-slate-800/80 px-5 py-2.5 border-b border-slate-100 dark:border-slate-700/50 flex justify-between items-center">
           <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Result</span>
           <div className="flex space-x-1">
+             <button 
+              onClick={speakResult}
+              className="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              title="Read Aloud"
+            >
+              <Volume2 className="w-3.5 h-3.5" />
+            </button>
             <button 
               onClick={() => navigator.clipboard.writeText(response.result)}
               className="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              title="Copy Result"
             >
               <Copy className="w-3.5 h-3.5" />
             </button>

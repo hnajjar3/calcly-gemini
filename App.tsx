@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowRight, Sparkles, Cpu, Search, RefreshCw, Zap, Brain, Image as ImageIcon, Camera, X, Sun, Moon, Calculator as CalcIcon } from './components/icons';
+import { ArrowRight, Sparkles, Cpu, Search, RefreshCw, Zap, Brain, Image as ImageIcon, Camera, X, Sun, Moon, Calculator as CalcIcon, Mic, Square } from './components/icons';
 import { HistoryItem, ModelMode } from './types';
 import { solveQuery } from './services/geminiService';
 import { ResultCard } from './components/ResultCard';
@@ -19,9 +19,12 @@ const App: React.FC = () => {
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>('light');
   const [showCalculator, setShowCalculator] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   // Initialize theme based on system preference
   useEffect(() => {
@@ -59,6 +62,52 @@ const App: React.FC = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // Audio Recording Logic
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        submitAudioQuery(audioBlob);
+        // Stop all tracks to release mic
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Error accessing microphone:", err);
+      alert("Could not access microphone. Please check permissions.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const submitAudioQuery = async (audioBlob: Blob) => {
+    // Convert blob to base64
+    const reader = new FileReader();
+    reader.readAsDataURL(audioBlob);
+    reader.onloadend = async () => {
+      const audioBase64 = reader.result as string;
+      await handleSubmit(undefined, undefined, audioBase64);
+    };
+  };
+
   const handleRetry = async (id: string) => {
     const itemToRetry = history.find(item => item.id === id);
     if (!itemToRetry) return;
@@ -68,7 +117,7 @@ const App: React.FC = () => {
     ));
 
     try {
-      const response = await solveQuery(itemToRetry.query, itemToRetry.modelMode, itemToRetry.attachedImage);
+      const response = await solveQuery(itemToRetry.query, itemToRetry.modelMode, itemToRetry.attachedImage, itemToRetry.audioBase64);
       setHistory(prev => prev.map(item => 
         item.id === id ? { ...item, loading: false, response } : item
       ));
@@ -79,19 +128,22 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSubmit = async (e?: React.FormEvent, overrideQuery?: string) => {
+  const handleSubmit = async (e?: React.FormEvent, overrideQuery?: string, audioBase64?: string) => {
     e?.preventDefault();
     const queryText = overrideQuery || query.trim();
-    if (!queryText || isProcessing) return;
+    
+    // Allow submission if there is text OR image OR audio
+    if ((!queryText && !attachedImage && !audioBase64) || isProcessing) return;
 
     const id = generateId();
     const newItem: HistoryItem = {
       id,
-      query: queryText,
+      query: queryText || (audioBase64 ? "Voice Query" : "Image Analysis"),
       timestamp: Date.now(),
       loading: true,
       modelMode,
-      attachedImage: attachedImage || undefined
+      attachedImage: attachedImage || undefined,
+      audioBase64: audioBase64 || undefined
     };
 
     setHistory(prev => [...prev, newItem]);
@@ -104,7 +156,7 @@ const App: React.FC = () => {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
 
     try {
-      const response = await solveQuery(queryText, newItem.modelMode, newItem.attachedImage);
+      const response = await solveQuery(queryText, newItem.modelMode, newItem.attachedImage, newItem.audioBase64);
       setHistory(prev => prev.map(item => 
         item.id === id ? { ...item, loading: false, response } : item
       ));
@@ -245,7 +297,7 @@ const App: React.FC = () => {
             onSubmit={(e) => handleSubmit(e)} 
             className={`relative group transition-all duration-300 ${isProcessing ? 'opacity-80 pointer-events-none' : ''}`}
           >
-            <div className="relative flex items-center bg-white dark:bg-slate-800 rounded-2xl border border-slate-300 dark:border-slate-600 shadow-2xl shadow-indigo-500/10 dark:shadow-black/40 focus-within:ring-2 focus-within:ring-indigo-500/50 focus-within:border-indigo-500 transition-all overflow-hidden">
+            <div className={`relative flex items-center bg-white dark:bg-slate-800 rounded-2xl border ${isRecording ? 'border-red-500 dark:border-red-500 ring-2 ring-red-500/20' : 'border-slate-300 dark:border-slate-600'} shadow-2xl shadow-indigo-500/10 dark:shadow-black/40 focus-within:ring-2 focus-within:ring-indigo-500/50 focus-within:border-indigo-500 transition-all overflow-hidden`}>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -264,17 +316,27 @@ const App: React.FC = () => {
 
                 <input
                   type="text"
-                  value={query}
+                  value={isRecording ? "Listening..." : query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder={modelMode === 'pro' ? "Ask complex questions (Math, Physics, Data)..." : "Ask quick questions..."}
-                  className="w-full h-16 px-4 bg-transparent text-lg text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none"
-                  disabled={isProcessing}
+                  className={`w-full h-16 px-4 bg-transparent text-lg ${isRecording ? 'text-red-500 font-medium animate-pulse' : 'text-slate-900 dark:text-slate-100'} placeholder:text-slate-400 focus:outline-none`}
+                  disabled={isProcessing || isRecording}
                 />
                 
-                <div className="pr-3">
+                <div className="flex items-center space-x-2 pr-3">
+                    {/* Recording Button */}
+                    <button
+                        type="button"
+                        onClick={isRecording ? stopRecording : startRecording}
+                        className={`aspect-square p-3 rounded-xl flex items-center justify-center transition-colors ${isRecording ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}
+                        title={isRecording ? "Stop Recording" : "Use Voice Input"}
+                    >
+                        {isRecording ? <Square className="w-5 h-5 fill-current" /> : <Mic className="w-5 h-5" />}
+                    </button>
+
                     <button
                     type="submit"
-                    disabled={(!query.trim() && !attachedImage) || isProcessing}
+                    disabled={(!query.trim() && !attachedImage) || isProcessing || isRecording}
                     className="aspect-square p-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white rounded-xl flex items-center justify-center transition-colors shadow-lg shadow-indigo-500/30"
                     >
                     {isProcessing ? (
@@ -288,7 +350,7 @@ const App: React.FC = () => {
           </form>
           <div className="text-center mt-2">
             <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
-               {modelMode === 'pro' ? 'Gemini 3 Pro (High Reasoning)' : 'Gemini 2.5 Flash (High Speed)'} • {attachedImage ? 'Image Analysis Active' : 'Text Input'}
+               {modelMode === 'pro' ? 'Gemini 3 Pro (High Reasoning)' : 'Gemini 2.5 Flash (High Speed)'} • {attachedImage ? 'Image Analysis Active' : isRecording ? 'Recording Voice...' : 'Text Input'}
             </p>
           </div>
         </div>

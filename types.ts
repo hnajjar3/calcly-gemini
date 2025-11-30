@@ -45,4 +45,5 @@ export interface HistoryItem {
   loading: boolean;
   modelMode: ModelMode;
   attachedImage?: string; // base64
+  audioBase64?: string; // base64 for voice queries
 }
