@@ -1,7 +1,8 @@
+
 import React from 'react';
 import { HistoryItem } from '../types';
 import { ChartVisualization } from './ChartVisualization';
-import { Copy, Share2, Sparkles, AlertTriangle, Zap, Brain, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import { Copy, Share2, Sparkles, AlertTriangle, Zap, Brain, Image as ImageIcon, ExternalLink, RefreshCw } from 'lucide-react';
 
 // Access global KaTeX loaded via script tag in index.html
 declare const katex: any;
@@ -9,6 +10,7 @@ declare const katex: any;
 interface Props {
   item: HistoryItem;
   isDarkMode: boolean;
+  onRetry?: (id: string) => void;
 }
 
 // LaTeX Renderer Component
@@ -46,7 +48,7 @@ const LatexRenderer: React.FC<{ content: string; className?: string }> = ({ cont
   );
 };
 
-export const ResultCard: React.FC<Props> = ({ item, isDarkMode }) => {
+export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry }) => {
   if (item.loading) {
     return (
       <div className="w-full max-w-4xl mx-auto mb-8 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 animate-pulse transition-colors">
@@ -67,9 +69,20 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode }) => {
   if (item.error) {
      return (
       <div className="w-full max-w-4xl mx-auto mb-8 bg-red-50 dark:bg-red-900/10 rounded-2xl shadow-sm border border-red-100 dark:border-red-900/30 p-6 transition-colors">
-        <div className="flex items-center space-x-3 text-red-700 dark:text-red-400 mb-2">
-          <AlertTriangle className="w-5 h-5" />
-          <h3 className="font-semibold">Something went wrong</h3>
+        <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3 text-red-700 dark:text-red-400 mb-2">
+                <AlertTriangle className="w-5 h-5" />
+                <h3 className="font-semibold">Something went wrong</h3>
+            </div>
+            {onRetry && (
+                <button 
+                    onClick={() => onRetry(item.id)}
+                    className="flex items-center space-x-1 px-3 py-1.5 bg-white dark:bg-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/50 text-red-600 dark:text-red-300 rounded-lg text-xs font-medium border border-red-100 dark:border-red-800 transition-colors shadow-sm"
+                >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Retry</span>
+                </button>
+            )}
         </div>
         <p className="text-red-600 dark:text-red-300">{item.error}</p>
       </div>

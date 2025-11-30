@@ -59,6 +59,26 @@ const App: React.FC = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const handleRetry = async (id: string) => {
+    const itemToRetry = history.find(item => item.id === id);
+    if (!itemToRetry) return;
+
+    setHistory(prev => prev.map(item => 
+      item.id === id ? { ...item, loading: true, error: undefined } : item
+    ));
+
+    try {
+      const response = await solveQuery(itemToRetry.query, itemToRetry.modelMode, itemToRetry.attachedImage);
+      setHistory(prev => prev.map(item => 
+        item.id === id ? { ...item, loading: false, response } : item
+      ));
+    } catch (err: any) {
+      setHistory(prev => prev.map(item => 
+        item.id === id ? { ...item, loading: false, error: err.message || "Failed to retry query" } : item
+      ));
+    }
+  };
+
   const handleSubmit = async (e?: React.FormEvent, overrideQuery?: string) => {
     e?.preventDefault();
     const queryText = overrideQuery || query.trim();
@@ -168,7 +188,12 @@ const App: React.FC = () => {
         {/* Results Feed */}
         <div className="space-y-6">
           {history.map((item) => (
-            <ResultCard key={item.id} item={item} isDarkMode={theme === 'dark'} />
+            <ResultCard 
+              key={item.id} 
+              item={item} 
+              isDarkMode={theme === 'dark'} 
+              onRetry={handleRetry}
+            />
           ))}
           <div ref={bottomRef} />
         </div>
