@@ -117,7 +117,8 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
         // Check if output actually looks like it failed (contains operation names usually means it couldn't solve)
         // e.g. "integrate(sin(x), x)" instead of "-cos(x)"
         const failKeywords = ['integrate', 'defint', 'sum', 'limit'];
-        const isFailure = failKeywords.some(kw => resultString.includes(kw));
+        // Strict check: It fails only if the result still contains the function name AND it wasn't just 'evaluate'
+        const isFailure = operation !== 'evaluate' && failKeywords.some(kw => resultString.includes(kw) && resultString.includes('('));
         
         if (isFailure) {
              throw new Error(`Nerdamer returned input (unsolved): ${resultString}`);
@@ -143,7 +144,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
          const AlgebriteEngine = getAlgebrite();
          
          if (!AlgebriteEngine) {
-             addLog("Algebrite library not loaded or failed to load. (getAlgebrite returned null)");
+             addLog("Algebrite library not loaded or failed to load. Skipping.");
          } else {
             try {
               let algString = '';
@@ -184,7 +185,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
               const res = AlgebriteEngine.run(algString);
               addLog(`Algebrite output: ${res}`);
               
-              if (!res || res.startsWith("Stop") || res.includes("Stop")) {
+              if (!res || res.startsWith("Stop") || res.includes("Stop") || res === 'nil') {
                 throw new Error(`Algebrite returned error: ${res}`);
               }
               
