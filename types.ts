@@ -31,6 +31,7 @@ export interface SolverResponse {
   sections: Section[]; // Detailed breakdown
   chart?: ChartConfig; // Optional visualization
   sources?: Source[]; // Google Search sources
+  suggestions?: string[]; // Contextual follow-up options (e.g. "Show steps", "Graph it")
 }
 
 export type ModelMode = 'flash' | 'pro';

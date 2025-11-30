@@ -118,6 +118,10 @@ const App: React.FC = () => {
     }
   };
 
+  const handleSuggestionClick = (suggestion: string) => {
+    handleSubmit(undefined, suggestion);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col text-slate-900 dark:text-slate-100 font-sans transition-colors duration-300">
       
@@ -193,6 +197,7 @@ const App: React.FC = () => {
               item={item} 
               isDarkMode={theme === 'dark'} 
               onRetry={handleRetry}
+              onSuggestionClick={handleSuggestionClick}
             />
           ))}
           <div ref={bottomRef} />
