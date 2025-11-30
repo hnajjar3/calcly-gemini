@@ -114,7 +114,8 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
         const resultString = evaluated.text();
         addLog(`Nerdamer output: ${resultString}`);
 
-        // Check if output actually looks like it failed (contains keywords)
+        // Check if output actually looks like it failed (contains operation names usually means it couldn't solve)
+        // e.g. "integrate(sin(x), x)" instead of "-cos(x)"
         const failKeywords = ['integrate', 'defint', 'sum', 'limit'];
         const isFailure = failKeywords.some(kw => resultString.includes(kw));
         
@@ -142,8 +143,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
          const AlgebriteEngine = getAlgebrite();
          
          if (!AlgebriteEngine) {
-             addLog("Algebrite library not loaded or failed to load.");
-             // If Nerdamer also failed, we are stuck
+             addLog("Algebrite library not loaded or failed to load. (getAlgebrite returned null)");
          } else {
             try {
               let algString = '';
@@ -184,12 +184,13 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
               const res = AlgebriteEngine.run(algString);
               addLog(`Algebrite output: ${res}`);
               
-              if (!res || res.startsWith("Stop")) {
+              if (!res || res.startsWith("Stop") || res.includes("Stop")) {
                 throw new Error(`Algebrite returned error: ${res}`);
               }
               
               // Convert ASCII result to LaTeX
               try {
+                 // Try to use nerdamer to format the output of Algebrite
                  finalLatex = nerdamer(res).toTeX();
               } catch (e) {
                  // Fallback to text wrapped in latex
