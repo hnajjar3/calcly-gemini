@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle, Calculator, Zap } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle, Calculator, Zap, Terminal } from 'lucide-react';
 import { parseMathCommand, MathCommand } from '../services/geminiService';
 import { LatexRenderer } from './LatexRenderer';
 
@@ -24,6 +24,23 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usedEngine, setUsedEngine] = useState<'Nerdamer' | 'Algebrite' | null>(null);
+  const [libraryStatus, setLibraryStatus] = useState<{ nerdamer: boolean, algebrite: boolean }>({ nerdamer: false, algebrite: false });
+  const [debugLog, setDebugLog] = useState<string[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
+
+  // Check for libraries on mount
+  useEffect(() => {
+    if (isOpen) {
+       const nCheck = typeof nerdamer !== 'undefined';
+       const aCheck = !!getAlgebrite();
+       setLibraryStatus({ nerdamer: nCheck, algebrite: aCheck });
+    }
+  }, [isOpen]);
+
+  const addLog = (msg: string) => {
+    console.log(`[Solver] ${msg}`);
+    setDebugLog(prev => [...prev, msg]);
+  };
 
   const handleSolve = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -35,11 +52,14 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
     setResultLatex('');
     setDecimalResult(null);
     setUsedEngine(null);
+    setDebugLog([]);
 
     try {
       // 1. Get Structured Command from Gemini
+      addLog("Parsing natural language with Gemini...");
       const command = await parseMathCommand(input);
       setParsedCommand(command);
+      addLog(`Parsed Command: ${JSON.stringify(command)}`);
 
       const { operation, expression, variable = 'x', start, end } = command;
       let solved = false;
@@ -47,6 +67,14 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
 
       // --- ENGINE 1: Nerdamer (Primary - Good Latex) ---
       try {
+        if (!libraryStatus.nerdamer && typeof nerdamer === 'undefined') {
+            addLog("Nerdamer library not found. Skipping.");
+            throw new Error("Nerdamer not loaded");
+        }
+        
+        // Reset nerdamer state if possible
+        if (nerdamer.flush) nerdamer.flush();
+
         let nerdString = '';
         
         switch (operation) {
@@ -79,20 +107,20 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
              break;
         }
 
+        addLog(`Nerdamer execution: ${nerdString}`);
         const obj = nerdamer(nerdString);
-        // If it's a symbolic op, we might need to evaluate to get the reduced form
         const evaluated = obj.evaluate();
         
-        // Check if Nerdamer actually did something useful
         const resultString = evaluated.text();
         const inputString = obj.text();
+        addLog(`Nerdamer output: ${resultString}`);
 
-        // Heuristic: If output == input and it wasn't a simple evaluate, it likely failed to solve
+        // Heuristic: If output == input and it wasn't a simple evaluate, it likely failed
         if (operation !== 'evaluate' && resultString === inputString && operation !== 'solve') {
-           throw new Error("Nerdamer returned input");
+           throw new Error("Nerdamer returned input (unsolved)");
         }
         
-        // If it's a summation/integral and the result still contains 'sum' or 'integral', it failed
+        // Failure keywords
         if ((operation === 'sum' && resultString.includes('sum')) || 
             (operation === 'integrate' && (resultString.includes('defint') || resultString.includes('integrate')))) {
              throw new Error("Nerdamer could not converge");
@@ -102,7 +130,6 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
         setUsedEngine('Nerdamer');
         solved = true;
 
-        // Try decimal if applicable
         try {
            const dec = evaluated.text('decimals');
            if (dec && !isNaN(parseFloat(dec)) && dec.length < 20) {
@@ -110,8 +137,8 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
            }
         } catch(e) {}
 
-      } catch (nerdError) {
-        console.warn("Nerdamer failed, trying Algebrite...", nerdError);
+      } catch (nerdError: any) {
+        addLog(`Nerdamer failed: ${nerdError.message}`);
       }
 
       // --- ENGINE 2: Algebrite (Fallback - Robust CAS) ---
@@ -119,7 +146,8 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
          const AlgebriteEngine = getAlgebrite();
          
          if (!AlgebriteEngine) {
-             console.warn("Algebrite library not loaded or failed to load.");
+             addLog("Algebrite library not loaded or failed to load.");
+             // If Nerdamer also failed, we are stuck
          } else {
             try {
               let algString = '';
@@ -129,8 +157,12 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                   if (start !== undefined && end !== undefined) {
                     algString = `defint(${expression},${variable},${start},${end})`;
                   } else {
-                    // Algebrite typically uses 'integral' for indefinite
-                    algString = `integral(${expression},${variable})`;
+                    // Simpler syntax often works better for Algebrite
+                    if (variable === 'x') {
+                         algString = `integral(${expression})`;
+                    } else {
+                         algString = `integral(${expression},${variable})`;
+                    }
                   }
                   break;
                 case 'differentiate':
@@ -140,7 +172,6 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                    algString = `roots(${expression},${variable})`;
                    break;
                 case 'sum':
-                   // Algebrite sum syntax: sum(expr,Var,start,end)
                    algString = `sum(${expression},${variable},${start},${end})`;
                    break;
                 case 'factor':
@@ -153,36 +184,35 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                    algString = expression;
               }
 
-              // Algebrite returns a string (e.g. "sin(x)") or "Stop: ..." on error
+              addLog(`Algebrite execution: ${algString}`);
               const res = AlgebriteEngine.run(algString);
+              addLog(`Algebrite output: ${res}`);
               
               if (!res || res.startsWith("Stop")) {
                 throw new Error(`Algebrite returned error: ${res}`);
               }
               
-              // Convert Algebrite (ASCII/Text) result to LaTeX using Nerdamer's parser if possible, 
-              // or fallback to basic string
+              // Convert ASCII result to LaTeX
               try {
                  finalLatex = nerdamer(res).toTeX();
               } catch (e) {
-                 // If Nerdamer can't parse the Algebrite result, just show it as text
-                 // wrap in $$ to trigger display mode in renderer (though it might be plain text)
+                 // Fallback to text wrapped in latex
                  finalLatex = `\\text{${res}}`; 
               }
 
               setUsedEngine('Algebrite');
               solved = true;
               
-              // Try to get float value from Algebrite result
               try {
+                 // Algebrite float evaluation
                  const val = AlgebriteEngine.run(`float(${res})`);
                  if (val && !isNaN(parseFloat(val))) {
                    setDecimalResult(val);
                  }
               } catch(e) {}
 
-            } catch (algError) {
-              console.error("Algebrite failed:", algError);
+            } catch (algError: any) {
+              addLog(`Algebrite failed: ${algError.message}`);
             }
          }
       }
@@ -194,8 +224,8 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
       }
 
     } catch (err: any) {
-      console.error("Symbolic Error:", err);
-      setError("Could not parse or solve this expression. The problem might be beyond the capabilities of the current symbolic engine.");
+      addLog(`Fatal Error: ${err.message}`);
+      setError(err.message || "Could not parse or solve this expression.");
     } finally {
       setIsProcessing(false);
     }
@@ -216,7 +246,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
             <div>
                 <h3 className="font-bold text-lg leading-tight">Symbolic Solver</h3>
                 <p className="text-[10px] uppercase tracking-wider font-semibold opacity-70">
-                   Pure Math Engine • No Hallucinations
+                   Pure Math Engine • Local Execution
                 </p>
             </div>
           </div>
@@ -225,8 +255,19 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto custom-scrollbar">
+        <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
             
+            {/* Library Status Warning */}
+            {(!libraryStatus.nerdamer || !libraryStatus.algebrite) && (
+                <div className="mb-4 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/30 rounded-lg flex items-center justify-between text-xs text-amber-600 dark:text-amber-400">
+                   <span>
+                      {!libraryStatus.nerdamer && "Nerdamer library missing. "}
+                      {!libraryStatus.algebrite && "Algebrite library missing. "}
+                      Symbolic capabilities may be limited.
+                   </span>
+                </div>
+            )}
+
             {/* Input Section */}
             <form onSubmit={handleSolve} className="mb-6 relative">
                 <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">
@@ -253,9 +294,18 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
 
             {/* Error State */}
             {error && (
-                <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-xl flex items-center space-x-3 text-red-600 dark:text-red-400 text-sm">
-                    <AlertTriangle className="w-5 h-5 shrink-0" />
-                    <p>{error}</p>
+                <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-xl flex flex-col space-y-2 text-red-600 dark:text-red-400 text-sm">
+                    <div className="flex items-center space-x-3 font-semibold">
+                        <AlertTriangle className="w-5 h-5 shrink-0" />
+                        <p>Symbolic Error</p>
+                    </div>
+                    <p className="pl-8 opacity-90">{error}</p>
+                    <button 
+                        onClick={() => setShowDebug(!showDebug)} 
+                        className="pl-8 text-xs underline opacity-70 hover:opacity-100 text-left"
+                    >
+                        {showDebug ? "Hide Details" : "Show Technical Details"}
+                    </button>
                 </div>
             )}
 
@@ -302,6 +352,31 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                     </div>
                 </div>
             )}
+            
+            {/* Debug Log (Collapsible) */}
+            {(debugLog.length > 0) && (
+                <div className="mt-8">
+                     <button 
+                        onClick={() => setShowDebug(!showDebug)}
+                        className="flex items-center space-x-2 text-xs font-mono text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                     >
+                        <Terminal className="w-3 h-3" />
+                        <span>{showDebug ? 'Hide Debug Logs' : 'Show Debug Logs'}</span>
+                     </button>
+                     
+                     {showDebug && (
+                         <div className="mt-3 p-4 bg-slate-100 dark:bg-black/30 rounded-lg text-[10px] font-mono text-slate-600 dark:text-slate-400 overflow-x-auto max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-800">
+                            {debugLog.map((log, i) => (
+                                <div key={i} className="mb-1 border-b border-slate-200/50 dark:border-slate-700/50 pb-1 last:border-0 last:pb-0">
+                                    <span className="opacity-50 mr-2">[{i + 1}]</span>
+                                    {log}
+                                </div>
+                            ))}
+                         </div>
+                     )}
+                </div>
+            )}
+
         </div>
       </div>
     </div>
