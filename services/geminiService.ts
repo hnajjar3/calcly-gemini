@@ -71,8 +71,9 @@ export const solveQuery = async (
         - Map your data values to 'value1', 'value2', etc., and list the corresponding names in 'seriesKeys'.
     3.  **Accuracy**: Use the googleSearch tool if the query requires up-to-date information (news, stock prices, recent events) or factual data you might not have.
     4.  **Format**: Return ONLY valid raw JSON matching the schema below. DO NOT wrap the JSON in markdown code blocks (e.g. \`\`\`json). Just return the raw JSON string.
-    5.  **Complexity**: If the query is complex math, show step-by-step reasoning in the 'sections'.
-    6.  **Images**: If an image is provided, analyze it thoroughly to answer the user's prompt.
+    5.  **Math**: Use LaTeX formatting for all mathematical expressions. Wrap inline math in single dollar signs ($...$) and block math in double dollar signs ($$...$$).
+    6.  **Complexity**: If the query is complex math, show step-by-step reasoning in the 'sections'.
+    7.  **Images**: If an image is provided, analyze it thoroughly to answer the user's prompt.
 
     SCHEMA:
     ${schemaDefinition}

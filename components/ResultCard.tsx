@@ -3,10 +3,47 @@ import React from 'react';
 import { HistoryItem } from '../types';
 import { ChartVisualization } from './ChartVisualization';
 import { Copy, Share2, Sparkles, AlertTriangle, Zap, Brain, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import katex from 'katex';
 
 interface Props {
   item: HistoryItem;
 }
+
+// LaTeX Renderer Component
+const LatexRenderer: React.FC<{ content: string; className?: string }> = ({ content, className = '' }) => {
+  // Split content by $$...$$ for block math and $...$ for inline math
+  // We use a regex that captures the delimiters to preserve them for processing
+  const parts = content.split(/(\$\$[\s\S]*?\$\$|\$[^$]*?\$)/g);
+
+  return (
+    <span className={className}>
+      {parts.map((part, index) => {
+        if (part.startsWith('$$') && part.endsWith('$$')) {
+          // Block Math
+          const math = part.slice(2, -2);
+          try {
+            const html = katex.renderToString(math, { displayMode: true, throwOnError: false });
+            return <span key={index} dangerouslySetInnerHTML={{ __html: html }} />;
+          } catch (e) {
+            return <span key={index}>{part}</span>;
+          }
+        } else if (part.startsWith('$') && part.endsWith('$')) {
+          // Inline Math
+          const math = part.slice(1, -1);
+          try {
+            const html = katex.renderToString(math, { displayMode: false, throwOnError: false });
+            return <span key={index} dangerouslySetInnerHTML={{ __html: html }} />;
+          } catch (e) {
+            return <span key={index}>{part}</span>;
+          }
+        } else {
+          // Regular Text
+          return <span key={index}>{part}</span>;
+        }
+      })}
+    </span>
+  );
+};
 
 export const ResultCard: React.FC<Props> = ({ item }) => {
   if (item.loading) {
@@ -57,7 +94,7 @@ export const ResultCard: React.FC<Props> = ({ item }) => {
             )}
             <div className="flex items-center space-x-2 mt-2 text-sm text-slate-500">
               <span className="font-medium text-indigo-600">Interpreted as:</span>
-              <span>{response.interpretation}</span>
+              <LatexRenderer content={response.interpretation} />
             </div>
           </div>
           <div className="flex items-center space-x-2 shrink-0">
@@ -91,7 +128,7 @@ export const ResultCard: React.FC<Props> = ({ item }) => {
         </div>
         <div className="p-8">
           <div className="text-3xl sm:text-4xl font-light text-slate-900 leading-tight">
-            {response.result}
+            <LatexRenderer content={response.result} />
           </div>
         </div>
       </div>
@@ -114,11 +151,15 @@ export const ResultCard: React.FC<Props> = ({ item }) => {
               {section.type === 'list' ? (
                 <ul className="list-disc pl-5 space-y-1">
                   {section.content.split('\n').map((line, i) => (
-                    <li key={i}>{line.replace(/^[•-]\s*/, '')}</li>
+                    <li key={i}>
+                      <LatexRenderer content={line.replace(/^[•-]\s*/, '')} />
+                    </li>
                   ))}
                 </ul>
               ) : (
-                <div className="whitespace-pre-wrap">{section.content}</div>
+                <div className="whitespace-pre-wrap">
+                  <LatexRenderer content={section.content} />
+                </div>
               )}
             </div>
           </div>
