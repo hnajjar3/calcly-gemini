@@ -6,6 +6,8 @@
     <title>OmniSolver - Computational Intelligence</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <!-- Load KaTeX globally to avoid module resolution issues -->
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <style>
       /* Custom scrollbar for a cleaner look */
       ::-webkit-scrollbar {
@@ -42,8 +44,7 @@
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
     "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
-    "uuid": "https://aistudiocdn.com/uuid@^13.0.0",
-    "katex": "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.mjs"
+    "uuid": "https://aistudiocdn.com/uuid@^13.0.0"
   }
 }
 </script>

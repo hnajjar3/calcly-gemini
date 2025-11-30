@@ -3,7 +3,9 @@ import React from 'react';
 import { HistoryItem } from '../types';
 import { ChartVisualization } from './ChartVisualization';
 import { Copy, Share2, Sparkles, AlertTriangle, Zap, Brain, Image as ImageIcon, ExternalLink } from 'lucide-react';
-import katex from 'katex';
+
+// Access global KaTeX loaded via script tag in index.html
+declare const katex: any;
 
 interface Props {
   item: HistoryItem;
