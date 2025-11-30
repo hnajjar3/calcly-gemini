@@ -112,18 +112,14 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
         const evaluated = obj.evaluate();
         
         const resultString = evaluated.text();
-        const inputString = obj.text();
         addLog(`Nerdamer output: ${resultString}`);
 
-        // Heuristic: If output == input and it wasn't a simple evaluate, it likely failed
-        if (operation !== 'evaluate' && resultString === inputString && operation !== 'solve') {
-           throw new Error("Nerdamer returned input (unsolved)");
-        }
+        // Check if output actually looks like it failed (contains keywords)
+        const failKeywords = ['integrate', 'defint', 'sum', 'limit'];
+        const isFailure = failKeywords.some(kw => resultString.includes(kw));
         
-        // Failure keywords
-        if ((operation === 'sum' && resultString.includes('sum')) || 
-            (operation === 'integrate' && (resultString.includes('defint') || resultString.includes('integrate')))) {
-             throw new Error("Nerdamer could not converge");
+        if (isFailure) {
+             throw new Error(`Nerdamer returned input (unsolved): ${resultString}`);
         }
 
         finalLatex = evaluated.toTeX();
