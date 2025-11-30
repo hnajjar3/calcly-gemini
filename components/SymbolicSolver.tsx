@@ -115,12 +115,12 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
         addLog(`Nerdamer output: ${resultString}`);
 
         // FAILURE DETECTION
-        // 1. If result matches input command exactly (echoing), it likely failed.
-        // 2. If result still contains the operation keyword (e.g. 'integrate'), it failed.
+        // If the result specifically contains keywords indicating it echoed the command (e.g., 'integrate(...)'), it failed.
+        // We do NOT check "resultString === nerdString" because 'integrate(sin(x), x)' != '-cos(x)', which is a correct solve.
         const failKeywords = ['integrate', 'defint', 'sum', 'limit'];
         const isFailure = 
-            (operation !== 'evaluate' && resultString === nerdString) || 
-            (operation !== 'evaluate' && failKeywords.some(kw => resultString.includes(kw) && resultString.includes('(')));
+            (operation !== 'evaluate') && 
+            failKeywords.some(kw => resultString.includes(kw) && resultString.includes('('));
         
         if (isFailure) {
              throw new Error(`Nerdamer returned input (unsolved): ${resultString}`);
@@ -194,7 +194,11 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
               // Convert ASCII result to LaTeX
               try {
                  // Try to use nerdamer to format the output of Algebrite
-                 finalLatex = nerdamer(res).toTeX();
+                 if (typeof nerdamer !== 'undefined') {
+                    finalLatex = nerdamer(res).toTeX();
+                 } else {
+                    finalLatex = `\\text{${res}}`;
+                 }
               } catch (e) {
                  // Fallback to text wrapped in latex
                  finalLatex = `\\text{${res}}`; 
