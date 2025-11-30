@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { 
   Search, 
@@ -16,7 +17,9 @@ import {
   Camera,
   Paperclip,
   Sun,
-  Moon
+  Moon,
+  Calculator,
+  Delete
 } from 'lucide-react';
 
 export { 
@@ -36,5 +39,7 @@ export {
   Camera,
   Paperclip,
   Sun,
-  Moon
+  Moon,
+  Calculator,
+  Delete
 };

@@ -1,8 +1,10 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowRight, Sparkles, Cpu, Search, RefreshCw, Zap, Brain, Image as ImageIcon, Camera, X, Sun, Moon } from './components/icons';
+import { ArrowRight, Sparkles, Cpu, Search, RefreshCw, Zap, Brain, Image as ImageIcon, Camera, X, Sun, Moon, Calculator as CalcIcon } from './components/icons';
 import { HistoryItem, ModelMode } from './types';
 import { solveQuery } from './services/geminiService';
 import { ResultCard } from './components/ResultCard';
+import { BasicCalculator } from './components/BasicCalculator';
 import { SAMPLE_QUERIES, APP_NAME } from './constants';
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -16,6 +18,7 @@ const App: React.FC = () => {
   const [modelMode, setModelMode] = useState<ModelMode>('pro');
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>('light');
+  const [showCalculator, setShowCalculator] = useState(false);
   
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -113,6 +116,16 @@ const App: React.FC = () => {
               <span className="flex items-center"><Sparkles className="w-3 h-3 mr-1 text-amber-500" /> Pro Intelligence</span>
               <span className="flex items-center"><RefreshCw className="w-3 h-3 mr-1 text-emerald-500" /> Real-time Data</span>
           </div>
+          <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block"></div>
+          
+          <button
+            onClick={() => setShowCalculator(true)}
+            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
+            title="Open Basic Calculator"
+          >
+            <CalcIcon className="w-5 h-5" />
+          </button>
+
           <button 
             onClick={toggleTheme}
             className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
@@ -250,6 +263,9 @@ const App: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Calculator Modal */}
+      <BasicCalculator isOpen={showCalculator} onClose={() => setShowCalculator(false)} />
 
     </div>
   );
