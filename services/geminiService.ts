@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { SolverResponse, ModelMode } from "../types";
 
@@ -200,4 +199,36 @@ export const solveQuery = async (
     console.error("Gemini API Error:", error);
     throw error;
   }
+};
+
+export const parseToNerdamer = async (query: string): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+  
+  const systemInstruction = `
+    You are a math syntax translator. Your job is to translate natural language math queries into valid 'nerdamer' JavaScript library function calls.
+    
+    Examples:
+    - "Integrate x squared" -> "defint(x^2, x)"
+    - "Derivative of sin(x)" -> "diff(sin(x), x)"
+    - "Solve x^2 + 2x + 1 = 0" -> "solve(x^2+2*x+1=0, x)"
+    - "Factor x^2 - 4" -> "factor(x^2-4)"
+    - "Limit of 1/x as x goes to infinity" -> "limit(1/x, x, Infinity)"
+    - "Sum of n^2 from 1 to 10" -> "sum(n^2, n, 1, 10)"
+
+    Return ONLY the raw expression string. Do NOT add markdown, quotes, or explanations.
+  `;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: { parts: [{ text: query }] },
+    config: {
+      systemInstruction: systemInstruction,
+      thinkingConfig: { thinkingBudget: 0 }
+    }
+  });
+
+  let text = response.text || '';
+  // Cleanup just in case
+  text = text.trim().replace(/^`+|`+$/g, '');
+  return text;
 };

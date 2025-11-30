@@ -1,10 +1,10 @@
-
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowRight, Sparkles, Cpu, Search, RefreshCw, Zap, Brain, Image as ImageIcon, Camera, X, Sun, Moon, Calculator as CalcIcon, Mic, Square } from './components/icons';
+import { ArrowRight, Sparkles, Cpu, Search, RefreshCw, Zap, Brain, Image as ImageIcon, Camera, X, Sun, Moon, Calculator as CalcIcon, Mic, Square, Sigma } from './components/icons';
 import { HistoryItem, ModelMode } from './types';
 import { solveQuery } from './services/geminiService';
 import { ResultCard } from './components/ResultCard';
 import { BasicCalculator } from './components/BasicCalculator';
+import { SymbolicSolver } from './components/SymbolicSolver';
 import { SAMPLE_QUERIES, APP_NAME } from './constants';
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -19,6 +19,7 @@ const App: React.FC = () => {
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>('light');
   const [showCalculator, setShowCalculator] = useState(false);
+  const [showSymbolicSolver, setShowSymbolicSolver] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -194,6 +195,14 @@ const App: React.FC = () => {
           </div>
           <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block"></div>
           
+           <button
+            onClick={() => setShowSymbolicSolver(true)}
+            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
+            title="Open Symbolic Solver (Exact Math)"
+          >
+            <Sigma className="w-5 h-5" />
+          </button>
+
           <button
             onClick={() => setShowCalculator(true)}
             className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
@@ -358,6 +367,9 @@ const App: React.FC = () => {
 
       {/* Calculator Modal */}
       <BasicCalculator isOpen={showCalculator} onClose={() => setShowCalculator(false)} />
+      
+      {/* Symbolic Solver Modal */}
+      <SymbolicSolver isOpen={showSymbolicSolver} onClose={() => setShowSymbolicSolver(false)} />
 
     </div>
   );

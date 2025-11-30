@@ -1,7 +1,7 @@
-
 import React, { useEffect, useRef } from 'react';
 import { HistoryItem } from '../types';
 import { ChartVisualization } from './ChartVisualization';
+import { LatexRenderer } from './LatexRenderer';
 import { Copy, Share2, Sparkles, AlertTriangle, Zap, Brain, Image as ImageIcon, ExternalLink, RefreshCw, ArrowRight, Lightbulb, Mic, Volume2 } from 'lucide-react';
 
 // Access global KaTeX and Prism loaded via script tags in index.html
@@ -53,41 +53,6 @@ const CodeBlock: React.FC<{ code: string; language?: string }> = ({ code, langua
         </code>
       </pre>
     </div>
-  );
-};
-
-// LaTeX Renderer Component
-const LatexRenderer: React.FC<{ content: string; className?: string }> = ({ content, className = '' }) => {
-  // Split content by $$...$$ for block math and $...$ for inline math
-  const parts = content.split(/(\$\$[\s\S]*?\$\$|\$[^$]*?\$)/g);
-
-  return (
-    <span className={className}>
-      {parts.map((part, index) => {
-        if (part.startsWith('$$') && part.endsWith('$$')) {
-          // Block Math
-          const math = part.slice(2, -2);
-          try {
-            const html = katex.renderToString(math, { displayMode: true, throwOnError: false });
-            return <span key={index} dangerouslySetInnerHTML={{ __html: html }} />;
-          } catch (e) {
-            return <span key={index}>{part}</span>;
-          }
-        } else if (part.startsWith('$') && part.endsWith('$')) {
-          // Inline Math
-          const math = part.slice(1, -1);
-          try {
-            const html = katex.renderToString(math, { displayMode: false, throwOnError: false });
-            return <span key={index} dangerouslySetInnerHTML={{ __html: html }} />;
-          } catch (e) {
-            return <span key={index}>{part}</span>;
-          }
-        } else {
-          // Regular Text
-          return <span key={index}>{part}</span>;
-        }
-      })}
-    </span>
   );
 };
 

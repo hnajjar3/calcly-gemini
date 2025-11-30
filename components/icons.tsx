@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { 
   Search, 
@@ -22,7 +21,8 @@ import {
   Delete,
   Mic,
   Square,
-  Volume2
+  Volume2,
+  Sigma
 } from 'lucide-react';
 
 export { 
@@ -47,5 +47,6 @@ export {
   Delete,
   Mic,
   Square,
-  Volume2
+  Volume2,
+  Sigma
 };
