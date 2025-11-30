@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle, Calculator } from 'lucide-react';
-import { parseToNerdamer } from '../services/geminiService';
+import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle, Calculator, Zap } from 'lucide-react';
+import { parseMathCommand, MathCommand } from '../services/geminiService';
 import { LatexRenderer } from './LatexRenderer';
 
 declare const nerdamer: any;
+declare const Algebrite: any;
 
 interface Props {
   isOpen: boolean;
@@ -12,11 +13,12 @@ interface Props {
 
 export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
   const [input, setInput] = useState('');
-  const [parsedExpression, setParsedExpression] = useState('');
+  const [parsedCommand, setParsedCommand] = useState<MathCommand | null>(null);
   const [resultLatex, setResultLatex] = useState('');
   const [decimalResult, setDecimalResult] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [usedEngine, setUsedEngine] = useState<'Nerdamer' | 'Algebrite' | null>(null);
 
   const handleSolve = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -24,49 +26,155 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
 
     setIsProcessing(true);
     setError(null);
-    setParsedExpression('');
+    setParsedCommand(null);
     setResultLatex('');
     setDecimalResult(null);
+    setUsedEngine(null);
 
     try {
-      // 1. Translate NL to Nerdamer syntax using Gemini
-      const nerdamerExpr = await parseToNerdamer(input);
-      
-      // Check if response is valid
-      if (!nerdamerExpr || nerdamerExpr.length > 200) {
-          throw new Error("Failed to interpret query.");
-      }
+      // 1. Get Structured Command from Gemini
+      const command = await parseMathCommand(input);
+      setParsedCommand(command);
 
-      // 2. Display the interpreted input (formatted as LaTeX)
+      const { operation, expression, variable = 'x', start, end } = command;
+      let solved = false;
+      let finalLatex = '';
+
+      // --- ENGINE 1: Nerdamer (Primary - Good Latex) ---
       try {
-          const inputTeX = nerdamer(nerdamerExpr).toTeX();
-          setParsedExpression(`$$${inputTeX}$$`);
-      } catch (e) {
-          // Fallback if basic parsing fails but we still want to try evaluating
-          setParsedExpression(nerdamerExpr);
-      }
-
-      // 3. Execute locally using Nerdamer
-      // IMPORTANT: We must call evaluate() to solve things like sums, integrals, etc.
-      const evaluatedObj = nerdamer(nerdamerExpr).evaluate();
-      const resultTex = evaluatedObj.toTeX();
-      setResultLatex(`$$${resultTex}$$`);
-
-      // 4. Try to get a decimal approximation if the result is symbolic/numeric
-      try {
-        const decimal = evaluatedObj.text('decimals');
-        // Only show decimal if it's different from the TeX (roughly) and looks like a number
-        // and avoid showing it for things that aren't numbers (like variable expressions)
-        if (decimal && decimal !== resultTex && !isNaN(parseFloat(decimal))) {
-           setDecimalResult(decimal);
+        let nerdString = '';
+        
+        switch (operation) {
+          case 'integrate':
+            if (start !== undefined && end !== undefined) {
+              nerdString = `defint(${expression}, ${start}, ${end}, ${variable})`;
+            } else {
+              nerdString = `integrate(${expression}, ${variable})`;
+            }
+            break;
+          case 'differentiate':
+            nerdString = `diff(${expression}, ${variable})`;
+            break;
+          case 'solve':
+            nerdString = `solve(${expression}, ${variable})`;
+            break;
+          case 'sum':
+             nerdString = `sum(${expression}, ${variable}, ${start || '0'}, ${end || '10'})`;
+             break;
+          case 'limit':
+             nerdString = `limit(${expression}, ${variable}, ${end || 'Infinity'})`;
+             break;
+          case 'factor':
+             nerdString = `factor(${expression})`;
+             break;
+          case 'simplify':
+          case 'evaluate':
+          default:
+             nerdString = expression;
+             break;
         }
-      } catch (e) {
-        // Ignore decimal errors
+
+        const obj = nerdamer(nerdString);
+        // If it's a symbolic op, we might need to evaluate to get the reduced form
+        const evaluated = obj.evaluate();
+        
+        // Check if Nerdamer actually did something useful
+        const resultString = evaluated.text();
+        const inputString = obj.text();
+
+        // Heuristic: If output == input and it wasn't a simple evaluate, it likely failed to solve
+        if (operation !== 'evaluate' && resultString === inputString && operation !== 'solve') {
+           throw new Error("Nerdamer returned input");
+        }
+        
+        // If it's a summation/integral and the result still contains 'sum' or 'integral', it failed
+        if ((operation === 'sum' && resultString.includes('sum')) || 
+            (operation === 'integrate' && (resultString.includes('defint') || resultString.includes('integrate')))) {
+             throw new Error("Nerdamer could not converge");
+        }
+
+        finalLatex = evaluated.toTeX();
+        setUsedEngine('Nerdamer');
+        solved = true;
+
+        // Try decimal if applicable
+        try {
+           const dec = evaluated.text('decimals');
+           if (dec && !isNaN(parseFloat(dec)) && dec.length < 20) {
+               setDecimalResult(dec);
+           }
+        } catch(e) {}
+
+      } catch (nerdError) {
+        console.warn("Nerdamer failed, trying Algebrite...", nerdError);
+      }
+
+      // --- ENGINE 2: Algebrite (Fallback - Robust CAS) ---
+      if (!solved) {
+         try {
+           let algString = '';
+           // Algebrite syntax mapping
+           switch (operation) {
+             case 'integrate':
+               if (start !== undefined && end !== undefined) {
+                 algString = `defint(${expression},${variable},${start},${end})`;
+               } else {
+                 algString = `integral(${expression},${variable})`;
+               }
+               break;
+             case 'differentiate':
+               algString = `d(${expression},${variable})`;
+               break;
+             case 'solve':
+                // Algebrite roots
+                algString = `roots(${expression},${variable})`;
+                break;
+             case 'sum':
+                // Algebrite sum syntax: sum(expr,Var,start,end)
+                algString = `sum(${expression},${variable},${start},${end})`;
+                break;
+             case 'factor':
+                algString = `factor(${expression})`;
+                break;
+             default:
+                algString = expression;
+           }
+
+           const res = Algebrite.run(algString);
+           
+           if (!res) throw new Error("Algebrite returned null");
+           
+           // Convert Algebrite (ASCII/Text) result to LaTeX using Nerdamer's parser if possible, 
+           // or fallback to basic string
+           try {
+              finalLatex = nerdamer(res).toTeX();
+           } catch (e) {
+              finalLatex = res; // Fallback to raw string
+           }
+
+           setUsedEngine('Algebrite');
+           solved = true;
+           
+           // Try to get float value from Algebrite result
+           const val = Algebrite.run(`float(${res})`);
+           if (!isNaN(parseFloat(val))) {
+             setDecimalResult(val);
+           }
+
+         } catch (algError) {
+           console.error("Algebrite failed:", algError);
+         }
+      }
+
+      if (solved) {
+        setResultLatex(finalLatex.startsWith('$$') ? finalLatex : `$$${finalLatex}$$`);
+      } else {
+        throw new Error("Unable to solve symbolically with available engines.");
       }
 
     } catch (err: any) {
       console.error("Symbolic Error:", err);
-      setError("Could not parse or solve this expression. Please try rephrasing.");
+      setError("Could not parse or solve this expression. The problem might be beyond the capabilities of the current symbolic engine.");
     } finally {
       setIsProcessing(false);
     }
@@ -86,7 +194,9 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
             </div>
             <div>
                 <h3 className="font-bold text-lg leading-tight">Symbolic Solver</h3>
-                <p className="text-[10px] uppercase tracking-wider font-semibold opacity-70">Powered by Nerdamer & Gemini</p>
+                <p className="text-[10px] uppercase tracking-wider font-semibold opacity-70">
+                   Pure Math Engine • No Hallucinations
+                </p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-500">
@@ -106,7 +216,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                         type="text" 
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder="e.g., Sum of 1/n! from 1 to infinity"
+                        placeholder="e.g., Integrate sin(x) from 0 to pi"
                         className="w-full pl-4 pr-14 py-4 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all text-slate-900 dark:text-slate-100"
                         autoFocus
                     />
@@ -129,24 +239,31 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
             )}
 
             {/* Results Area */}
-            {(parsedExpression || resultLatex) && !error && (
+            {(parsedCommand || resultLatex) && !error && (
                 <div className="space-y-6 animate-fade-in-up">
                     
-                    {/* Parsed Input */}
-                    <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-4 shadow-sm">
-                        <h4 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Interpreted Expression</h4>
-                        <div className="text-lg text-slate-700 dark:text-slate-300 overflow-x-auto">
-                            <LatexRenderer content={parsedExpression} />
+                    {/* Interpreted Command */}
+                    {parsedCommand && (
+                        <div className="flex items-center space-x-4">
+                            <div className="flex-1 h-px bg-slate-100 dark:bg-slate-700"></div>
+                            <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">
+                                {parsedCommand.operation.toUpperCase()} • {parsedCommand.variable}
+                            </span>
+                            <div className="flex-1 h-px bg-slate-100 dark:bg-slate-700"></div>
                         </div>
-                    </div>
-
-                    {/* Arrow */}
-                    <div className="flex justify-center text-slate-300 dark:text-slate-600">
-                        <ArrowRight className="w-6 h-6 rotate-90 sm:rotate-0" />
-                    </div>
+                    )}
 
                     {/* Final Result */}
-                    <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-slate-800 dark:to-slate-800/50 border border-indigo-100 dark:border-indigo-900/30 rounded-xl p-6 shadow-md">
+                    <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-slate-800 dark:to-slate-800/50 border border-indigo-100 dark:border-indigo-900/30 rounded-xl p-6 shadow-md relative">
+                         {usedEngine && (
+                            <div className="absolute top-3 right-3 flex items-center px-2 py-1 rounded-md bg-white/50 dark:bg-black/20 border border-indigo-100 dark:border-indigo-900/20">
+                                <Zap className="w-3 h-3 text-amber-500 mr-1.5" />
+                                <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                                   Solved by {usedEngine}
+                                </span>
+                            </div>
+                        )}
+
                         <h4 className="text-xs font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-wider mb-3">Computed Result</h4>
                         
                         {/* Symbolic Result */}

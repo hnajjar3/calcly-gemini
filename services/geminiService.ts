@@ -201,22 +201,44 @@ export const solveQuery = async (
   }
 };
 
-export const parseToNerdamer = async (query: string): Promise<string> => {
+export interface MathCommand {
+  operation: 'integrate' | 'differentiate' | 'solve' | 'simplify' | 'factor' | 'limit' | 'sum' | 'evaluate';
+  expression: string;
+  variable?: string;
+  start?: string;
+  end?: string;
+}
+
+export const parseMathCommand = async (query: string): Promise<MathCommand> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
   const systemInstruction = `
-    You are a math syntax translator. Your job is to translate natural language math queries into valid 'nerdamer' JavaScript library function calls.
+    You are a math syntax parser. Your goal is to map natural language math queries into a specific structured JSON command object.
     
-    Examples:
-    - "Integrate x squared" -> "defint(x^2, x)"
-    - "Derivative of sin(x)" -> "diff(sin(x), x)"
-    - "Solve x^2 + 2x + 1 = 0" -> "solve(x^2+2*x+1=0, x)"
-    - "Factor x^2 - 4" -> "factor(x^2-4)"
-    - "Limit of 1/x as x goes to infinity" -> "limit(1/x, x, Infinity)"
-    - "Sum of n^2 from 1 to 10" -> "sum(n^2, n, 1, 10)"
-    - "Sum of 1/n! from 1 to infinity" -> "sum(1/factorial(n), n, 1, Infinity)"
+    Operations: 
+    - "integrate" (for both definite and indefinite integrals)
+    - "differentiate" (derivatives)
+    - "solve" (finding roots, solving equations)
+    - "simplify" (algebraic simplification)
+    - "factor" (factoring polynomials)
+    - "limit"
+    - "sum" (summations)
+    - "evaluate" (basic arithmetic or function evaluation)
 
-    Return ONLY the raw expression string. Do NOT add markdown (like \`\`\`javascript), quotes, or explanations.
+    Fields:
+    - operation: The operation type.
+    - expression: The mathematical expression (e.g., "sin(x)", "x^2 + 2x"). Format it for standard computer algebra systems (e.g. use "*" for multiplication).
+    - variable: The independent variable (e.g., "x", "n"). Default to "x".
+    - start: (Optional) Lower bound for integrals or sums.
+    - end: (Optional) Upper bound for integrals or sums. Use "Infinity" for infinity.
+
+    Examples:
+    1. "Integrate sin(x)" -> { "operation": "integrate", "expression": "sin(x)", "variable": "x" }
+    2. "Integrate x^2 from 0 to 10" -> { "operation": "integrate", "expression": "x^2", "variable": "x", "start": "0", "end": "10" }
+    3. "Sum of 1/n! from 1 to infinity" -> { "operation": "sum", "expression": "1/factorial(n)", "variable": "n", "start": "1", "end": "Infinity" }
+    4. "Solve x^2 - 4 = 0" -> { "operation": "solve", "expression": "x^2 - 4 = 0", "variable": "x" }
+    
+    Return ONLY valid raw JSON.
   `;
 
   const response = await ai.models.generateContent({
@@ -229,10 +251,14 @@ export const parseToNerdamer = async (query: string): Promise<string> => {
   });
 
   let text = response.text || '';
-  // Cleanup potential markdown wrappers
   text = text.trim();
   text = text.replace(/^```[a-z]*\s*/i, '').replace(/\s*```$/, '');
-  text = text.replace(/^`|`$/g, '');
   
-  return text.trim();
+  try {
+    return JSON.parse(text) as MathCommand;
+  } catch (e) {
+    console.error("Failed to parse math command JSON", text);
+    // Fallback simple evaluate
+    return { operation: 'evaluate', expression: query };
+  }
 };
