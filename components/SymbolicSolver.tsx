@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle, Calculator, Zap, Terminal } from 'lucide-react';
 import { parseMathCommand, MathCommand } from '../services/geminiService';
 import { LatexRenderer } from './LatexRenderer';
@@ -9,6 +9,12 @@ declare const nerdamer: any;
 const getAlgebrite = () => {
   // @ts-ignore
   return window.Algebrite || (window as any).algebrite;
+};
+
+// Helper to check nerdamer presence
+const getNerdamer = () => {
+  // @ts-ignore
+  return (typeof nerdamer !== 'undefined' ? nerdamer : undefined) || (window as any).nerdamer;
 };
 
 interface Props {
@@ -28,13 +34,26 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
   const [debugLog, setDebugLog] = useState<string[]>([]);
   const [showDebug, setShowDebug] = useState(false);
 
-  // Check for libraries on mount
+  // Poll for libraries on mount/open
   useEffect(() => {
-    if (isOpen) {
-       const nCheck = typeof nerdamer !== 'undefined';
-       const aCheck = !!getAlgebrite();
-       setLibraryStatus({ nerdamer: nCheck, algebrite: aCheck });
-    }
+    if (!isOpen) return;
+
+    let attempts = 0;
+    const maxAttempts = 25; // Try for ~5 seconds
+    
+    const checkLibraries = () => {
+      const nCheck = !!getNerdamer();
+      const aCheck = !!getAlgebrite();
+      
+      setLibraryStatus({ nerdamer: nCheck, algebrite: aCheck });
+
+      if ((!nCheck || !aCheck) && attempts < maxAttempts) {
+        attempts++;
+        setTimeout(checkLibraries, 200);
+      }
+    };
+
+    checkLibraries();
   }, [isOpen]);
 
   const addLog = (msg: string) => {
@@ -66,14 +85,15 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
       let finalLatex = '';
 
       // --- ENGINE 1: Nerdamer (Primary - Good Latex) ---
+      const NerdamerEngine = getNerdamer();
       try {
-        if (!libraryStatus.nerdamer && typeof nerdamer === 'undefined') {
+        if (!NerdamerEngine) {
             addLog("Nerdamer library not found. Skipping.");
             throw new Error("Nerdamer not loaded");
         }
         
         // Reset nerdamer state if possible
-        if (nerdamer.flush) nerdamer.flush();
+        if (NerdamerEngine.flush) NerdamerEngine.flush();
 
         let nerdString = '';
         
@@ -108,7 +128,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
         }
 
         addLog(`Nerdamer execution: ${nerdString}`);
-        const obj = nerdamer(nerdString);
+        const obj = NerdamerEngine(nerdString);
         const evaluated = obj.evaluate();
         
         const resultString = evaluated.text();
@@ -116,7 +136,6 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
 
         // FAILURE DETECTION
         // If the result specifically contains keywords indicating it echoed the command (e.g., 'integrate(...)'), it failed.
-        // We do NOT check "resultString === nerdString" because 'integrate(sin(x), x)' != '-cos(x)', which is a correct solve.
         const failKeywords = ['integrate', 'defint', 'sum', 'limit'];
         const isFailure = 
             (operation !== 'evaluate') && 
@@ -194,8 +213,8 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
               // Convert ASCII result to LaTeX
               try {
                  // Try to use nerdamer to format the output of Algebrite
-                 if (typeof nerdamer !== 'undefined') {
-                    finalLatex = nerdamer(res).toTeX();
+                 if (NerdamerEngine) {
+                    finalLatex = NerdamerEngine(res).toTeX();
                  } else {
                     finalLatex = `\\text{${res}}`;
                  }
@@ -267,7 +286,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                    <span>
                       {!libraryStatus.nerdamer && "Nerdamer library missing. "}
                       {!libraryStatus.algebrite && "Algebrite library missing. "}
-                      Symbolic capabilities may be limited.
+                      Symbolic capabilities may be limited (Retrying...).
                    </span>
                 </div>
             )}
