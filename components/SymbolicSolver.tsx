@@ -111,68 +111,72 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
 
       // --- ENGINE 2: Algebrite (Fallback - Robust CAS) ---
       if (!solved) {
-         try {
-           let algString = '';
-           // Algebrite syntax mapping
-           switch (operation) {
-             case 'integrate':
-               if (start !== undefined && end !== undefined) {
-                 algString = `defint(${expression},${variable},${start},${end})`;
-               } else {
-                 // Algebrite typically uses 'integral' for indefinite
-                 algString = `integral(${expression},${variable})`;
-               }
-               break;
-             case 'differentiate':
-               algString = `d(${expression},${variable})`;
-               break;
-             case 'solve':
-                algString = `roots(${expression},${variable})`;
-                break;
-             case 'sum':
-                // Algebrite sum syntax: sum(expr,Var,start,end)
-                algString = `sum(${expression},${variable},${start},${end})`;
-                break;
-             case 'factor':
-                algString = `factor(${expression})`;
-                break;
-             case 'simplify':
-                algString = `simplify(${expression})`;
-                break;
-             default:
-                algString = expression;
-           }
-
-           // Algebrite returns a string (e.g. "sin(x)") or "Stop: ..." on error
-           const res = Algebrite.run(algString);
-           
-           if (!res || res.startsWith("Stop")) {
-             throw new Error(`Algebrite returned error: ${res}`);
-           }
-           
-           // Convert Algebrite (ASCII/Text) result to LaTeX using Nerdamer's parser if possible, 
-           // or fallback to basic string
-           try {
-              finalLatex = nerdamer(res).toTeX();
-           } catch (e) {
-              // If Nerdamer can't parse the Algebrite result, just show it as text
-              // wrap in $$ to trigger display mode in renderer (though it might be plain text)
-              finalLatex = `\\text{${res}}`; 
-           }
-
-           setUsedEngine('Algebrite');
-           solved = true;
-           
-           // Try to get float value from Algebrite result
-           try {
-              const val = Algebrite.run(`float(${res})`);
-              if (val && !isNaN(parseFloat(val))) {
-                setDecimalResult(val);
+         if (typeof Algebrite === 'undefined') {
+             console.warn("Algebrite library not loaded or failed to load.");
+         } else {
+            try {
+              let algString = '';
+              // Algebrite syntax mapping
+              switch (operation) {
+                case 'integrate':
+                  if (start !== undefined && end !== undefined) {
+                    algString = `defint(${expression},${variable},${start},${end})`;
+                  } else {
+                    // Algebrite typically uses 'integral' for indefinite
+                    algString = `integral(${expression},${variable})`;
+                  }
+                  break;
+                case 'differentiate':
+                  algString = `d(${expression},${variable})`;
+                  break;
+                case 'solve':
+                   algString = `roots(${expression},${variable})`;
+                   break;
+                case 'sum':
+                   // Algebrite sum syntax: sum(expr,Var,start,end)
+                   algString = `sum(${expression},${variable},${start},${end})`;
+                   break;
+                case 'factor':
+                   algString = `factor(${expression})`;
+                   break;
+                case 'simplify':
+                   algString = `simplify(${expression})`;
+                   break;
+                default:
+                   algString = expression;
               }
-           } catch(e) {}
 
-         } catch (algError) {
-           console.error("Algebrite failed:", algError);
+              // Algebrite returns a string (e.g. "sin(x)") or "Stop: ..." on error
+              const res = Algebrite.run(algString);
+              
+              if (!res || res.startsWith("Stop")) {
+                throw new Error(`Algebrite returned error: ${res}`);
+              }
+              
+              // Convert Algebrite (ASCII/Text) result to LaTeX using Nerdamer's parser if possible, 
+              // or fallback to basic string
+              try {
+                 finalLatex = nerdamer(res).toTeX();
+              } catch (e) {
+                 // If Nerdamer can't parse the Algebrite result, just show it as text
+                 // wrap in $$ to trigger display mode in renderer (though it might be plain text)
+                 finalLatex = `\\text{${res}}`; 
+              }
+
+              setUsedEngine('Algebrite');
+              solved = true;
+              
+              // Try to get float value from Algebrite result
+              try {
+                 const val = Algebrite.run(`float(${res})`);
+                 if (val && !isNaN(parseFloat(val))) {
+                   setDecimalResult(val);
+                 }
+              } catch(e) {}
+
+            } catch (algError) {
+              console.error("Algebrite failed:", algError);
+            }
          }
       }
 
