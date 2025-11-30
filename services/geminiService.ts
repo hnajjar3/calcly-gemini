@@ -214,8 +214,9 @@ export const parseToNerdamer = async (query: string): Promise<string> => {
     - "Factor x^2 - 4" -> "factor(x^2-4)"
     - "Limit of 1/x as x goes to infinity" -> "limit(1/x, x, Infinity)"
     - "Sum of n^2 from 1 to 10" -> "sum(n^2, n, 1, 10)"
+    - "Sum of 1/n! from 1 to infinity" -> "sum(1/factorial(n), n, 1, Infinity)"
 
-    Return ONLY the raw expression string. Do NOT add markdown, quotes, or explanations.
+    Return ONLY the raw expression string. Do NOT add markdown (like \`\`\`javascript), quotes, or explanations.
   `;
 
   const response = await ai.models.generateContent({
@@ -228,7 +229,10 @@ export const parseToNerdamer = async (query: string): Promise<string> => {
   });
 
   let text = response.text || '';
-  // Cleanup just in case
-  text = text.trim().replace(/^`+|`+$/g, '');
-  return text;
+  // Cleanup potential markdown wrappers
+  text = text.trim();
+  text = text.replace(/^```[a-z]*\s*/i, '').replace(/\s*```$/, '');
+  text = text.replace(/^`|`$/g, '');
+  
+  return text.trim();
 };

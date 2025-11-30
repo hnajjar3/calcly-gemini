@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle } from 'lucide-react';
+import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle, Calculator } from 'lucide-react';
 import { parseToNerdamer } from '../services/geminiService';
 import { LatexRenderer } from './LatexRenderer';
 
@@ -14,6 +14,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
   const [input, setInput] = useState('');
   const [parsedExpression, setParsedExpression] = useState('');
   const [resultLatex, setResultLatex] = useState('');
+  const [decimalResult, setDecimalResult] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,21 +26,44 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
     setError(null);
     setParsedExpression('');
     setResultLatex('');
+    setDecimalResult(null);
 
     try {
       // 1. Translate NL to Nerdamer syntax using Gemini
       const nerdamerExpr = await parseToNerdamer(input);
-      setParsedExpression(nerdamerExpr);
+      
+      // Check if response is valid
+      if (!nerdamerExpr || nerdamerExpr.length > 200) {
+          throw new Error("Failed to interpret query.");
+      }
 
-      // 2. Execute locally using Nerdamer
-      // nerdamer(expr).toTeX() returns the LaTeX string
-      const result = nerdamer(nerdamerExpr).toTeX();
-      
-      // Also get the input in LaTeX for display
-      const inputTeX = nerdamer(nerdamerExpr).text('latex');
-      setParsedExpression(`$$${inputTeX}$$`);
-      
-      setResultLatex(`$$${result}$$`);
+      // 2. Display the interpreted input (formatted as LaTeX)
+      try {
+          const inputTeX = nerdamer(nerdamerExpr).toTeX();
+          setParsedExpression(`$$${inputTeX}$$`);
+      } catch (e) {
+          // Fallback if basic parsing fails but we still want to try evaluating
+          setParsedExpression(nerdamerExpr);
+      }
+
+      // 3. Execute locally using Nerdamer
+      // IMPORTANT: We must call evaluate() to solve things like sums, integrals, etc.
+      const evaluatedObj = nerdamer(nerdamerExpr).evaluate();
+      const resultTex = evaluatedObj.toTeX();
+      setResultLatex(`$$${resultTex}$$`);
+
+      // 4. Try to get a decimal approximation if the result is symbolic/numeric
+      try {
+        const decimal = evaluatedObj.text('decimals');
+        // Only show decimal if it's different from the TeX (roughly) and looks like a number
+        // and avoid showing it for things that aren't numbers (like variable expressions)
+        if (decimal && decimal !== resultTex && !isNaN(parseFloat(decimal))) {
+           setDecimalResult(decimal);
+        }
+      } catch (e) {
+        // Ignore decimal errors
+      }
+
     } catch (err: any) {
       console.error("Symbolic Error:", err);
       setError("Could not parse or solve this expression. Please try rephrasing.");
@@ -82,7 +106,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                         type="text" 
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder="e.g., Integrate x^2 * sin(x), Factor x^2-4..."
+                        placeholder="e.g., Sum of 1/n! from 1 to infinity"
                         className="w-full pl-4 pr-14 py-4 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all text-slate-900 dark:text-slate-100"
                         autoFocus
                     />
@@ -124,9 +148,19 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                     {/* Final Result */}
                     <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-slate-800 dark:to-slate-800/50 border border-indigo-100 dark:border-indigo-900/30 rounded-xl p-6 shadow-md">
                         <h4 className="text-xs font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-wider mb-3">Computed Result</h4>
-                        <div className="text-2xl sm:text-3xl text-slate-900 dark:text-slate-100 overflow-x-auto">
+                        
+                        {/* Symbolic Result */}
+                        <div className="text-2xl sm:text-3xl text-slate-900 dark:text-slate-100 overflow-x-auto mb-3">
                             <LatexRenderer content={resultLatex} />
                         </div>
+
+                        {/* Decimal Approximation if available */}
+                        {decimalResult && (
+                           <div className="flex items-center space-x-2 pt-3 border-t border-indigo-100 dark:border-indigo-900/30 text-slate-500 dark:text-slate-400 text-sm">
+                              <Calculator className="w-4 h-4" />
+                              <span className="font-mono">≈ {decimalResult}</span>
+                           </div>
+                        )}
                     </div>
                 </div>
             )}
