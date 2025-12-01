@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle, Calculator, Zap, Terminal, CheckCircle2 } from 'lucide-react';
+import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle, Calculator, Zap, Terminal, CheckCircle2 } from '../components/icons';
 import { parseMathCommand, MathCommand } from '../services/geminiService';
 import { LatexRenderer } from './LatexRenderer';
 

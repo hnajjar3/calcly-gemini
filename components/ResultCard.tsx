@@ -1,8 +1,9 @@
+
 import React, { useEffect, useRef } from 'react';
 import { HistoryItem } from '../types';
 import { ChartVisualization } from './ChartVisualization';
 import { LatexRenderer } from './LatexRenderer';
-import { Copy, Share2, Sparkles, AlertTriangle, Zap, Brain, Image as ImageIcon, ExternalLink, RefreshCw, ArrowRight, Lightbulb, Mic, Volume2 } from 'lucide-react';
+import { Copy, Sparkles, AlertTriangle, Zap, Brain, Image as ImageIcon, ExternalLink, RefreshCw, ArrowRight, Lightbulb, Mic, Volume2 } from '../components/icons';
 
 // Access global KaTeX and Prism loaded via script tags in index.html
 declare const katex: any;

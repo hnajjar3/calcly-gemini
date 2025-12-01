@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, Delete, Equal, Calculator as CalcIcon } from 'lucide-react';
+import { X, Delete, Equal, Calculator as CalcIcon } from '../components/icons';
 
 interface Props {
   isOpen: boolean;

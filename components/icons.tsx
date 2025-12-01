@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { 
   Search, 
@@ -22,7 +23,14 @@ import {
   Mic,
   Square,
   Volume2,
-  Sigma
+  Sigma,
+  Play,
+  AlertTriangle,
+  Terminal,
+  CheckCircle2,
+  Equal,
+  ExternalLink,
+  Lightbulb
 } from 'lucide-react';
 
 export { 
@@ -48,5 +56,12 @@ export {
   Mic,
   Square,
   Volume2,
-  Sigma
+  Sigma,
+  Play,
+  AlertTriangle,
+  Terminal,
+  CheckCircle2,
+  Equal,
+  ExternalLink,
+  Lightbulb
 };
