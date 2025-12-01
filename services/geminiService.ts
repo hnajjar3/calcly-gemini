@@ -202,11 +202,11 @@ export const solveQuery = async (
 };
 
 export interface MathCommand {
-  operation: 'integrate' | 'differentiate' | 'solve' | 'simplify' | 'factor' | 'limit' | 'sum' | 'evaluate';
+  operation: 'integrate' | 'differentiate' | 'solve' | 'simplify' | 'factor' | 'limit' | 'sum' | 'evaluate' | 'determinant' | 'invert' | 'taylor';
   expression: string;
   variable?: string;
-  start?: string;
-  end?: string;
+  start?: string; // Used for bounds OR taylor series center point
+  end?: string; // Used for bounds OR taylor series order
 }
 
 export const parseMathCommand = async (query: string): Promise<MathCommand> => {
@@ -216,31 +216,39 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
     You are a math syntax parser. Your goal is to map natural language math queries into a specific structured JSON command object.
     
     Operations: 
-    - "integrate" (for both definite and indefinite integrals)
-    - "differentiate" (derivatives)
-    - "solve" (finding roots, solving equations)
-    - "simplify" (algebraic simplification)
-    - "factor" (factoring polynomials)
+    - "integrate" (definite and indefinite)
+    - "differentiate"
+    - "solve" (equations, roots, systems of equations)
+    - "simplify"
+    - "factor"
     - "limit"
-    - "sum" (summations)
-    - "evaluate" (basic arithmetic or function evaluation)
+    - "sum"
+    - "evaluate"
+    - "determinant" (matrix determinant)
+    - "invert" (matrix inversion)
+    - "taylor" (Taylor series expansion)
 
     Fields:
     - operation: The operation type.
     - expression: The mathematical expression.
       * CRITICAL: Do NOT include 'y=' or 'f(x)='. Just the right-hand side.
       * CRITICAL: Do NOT include 'dx' or 'dt' in integrals. Just the integrand.
+      * MATRICES: Return matrices in standard JS array format: [[1,2],[3,4]].
+      * SYSTEMS: For multiple equations, separate them with commas (e.g., "x+y=1, x-y=2").
       * Example: "integrate sin(x) dx" -> expression: "sin(x)"
       * Example: "y = x^2 + 2" -> expression: "x^2 + 2"
-    - variable: The independent variable (e.g., "x", "n"). Default to "x".
-    - start: (Optional) Lower bound for integrals or sums.
-    - end: (Optional) Upper bound for integrals or sums. Use "Infinity" for infinity.
+    - variable: The independent variable(s) (e.g., "x", "n", or "x,y" for systems). Default to "x".
+    - start: (Optional) Lower bound for integrals/sums, OR center point for Taylor series (default 0).
+    - end: (Optional) Upper bound for integrals/sums, OR order/terms for Taylor series (default 4).
 
     Examples:
     1. "Integrate sin(x)" -> { "operation": "integrate", "expression": "sin(x)", "variable": "x" }
     2. "Integrate x^2 from 0 to 10" -> { "operation": "integrate", "expression": "x^2", "variable": "x", "start": "0", "end": "10" }
     3. "Sum of 1/n! from 1 to infinity" -> { "operation": "sum", "expression": "1/factorial(n)", "variable": "n", "start": "1", "end": "Infinity" }
     4. "Solve x^2 - 4 = 0" -> { "operation": "solve", "expression": "x^2 - 4 = 0", "variable": "x" }
+    5. "Determinant of [[1,2],[3,4]]" -> { "operation": "determinant", "expression": "[[1,2],[3,4]]" }
+    6. "Taylor series of cos(x) at 0" -> { "operation": "taylor", "expression": "cos(x)", "variable": "x", "start": "0", "end": "4" }
+    7. "Solve x+y=5, x-y=1" -> { "operation": "solve", "expression": "x+y=5, x-y=1", "variable": "x,y" }
     
     Return ONLY valid raw JSON.
   `;

@@ -17,6 +17,22 @@ const getNerdamer = () => {
   return (typeof nerdamer !== 'undefined' ? nerdamer : undefined) || (window as any).nerdamer;
 };
 
+// Helper to convert array syntax [[1,2],[3,4]] to nerdamer "matrix([1,2],[3,4])"
+const formatMatrixForNerdamer = (expr: string): string => {
+  if (expr.trim().startsWith('[[')) {
+    return `matrix(${expr.replace(/^\[+|\]+$/g, '').split('],[').map(row => `[${row.replace(/\[|\]/g, '')}]`).join(',')})`;
+  }
+  return expr;
+};
+
+// Helper to convert array syntax [[1,2],[3,4]] to Algebrite "((1,2),(3,4))"
+const formatMatrixForAlgebrite = (expr: string): string => {
+  if (expr.trim().startsWith('[[')) {
+    return expr.replace(/\[/g, '(').replace(/\]/g, ')');
+  }
+  return expr;
+};
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -115,7 +131,12 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
             nerdString = `diff(${expression}, ${variable})`;
             break;
           case 'solve':
-            nerdString = `solve(${expression}, ${variable})`;
+            // Check for system of equations (comma separated)
+            if (expression.includes(',')) {
+               nerdString = `solveEquations([${expression}])`;
+            } else {
+               nerdString = `solve(${expression}, ${variable})`;
+            }
             break;
           case 'sum':
              nerdString = `sum(${expression}, ${variable}, ${start || '0'}, ${end || '10'})`;
@@ -125,6 +146,16 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
              break;
           case 'factor':
              nerdString = `factor(${expression})`;
+             break;
+          case 'determinant':
+             nerdString = `determinant(${formatMatrixForNerdamer(expression)})`;
+             break;
+          case 'invert':
+             nerdString = `invert(${formatMatrixForNerdamer(expression)})`;
+             break;
+          case 'taylor':
+             // taylor(expr, var, terms, point)
+             nerdString = `taylor(${expression}, ${variable}, ${end || '4'}, ${start || '0'})`;
              break;
           case 'simplify':
           case 'evaluate':
@@ -142,7 +173,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
 
         // FAILURE DETECTION
         // If the result specifically contains keywords indicating it echoed the command (e.g., 'integrate(...)'), it failed.
-        const failKeywords = ['integrate', 'defint', 'sum', 'limit'];
+        const failKeywords = ['integrate', 'defint', 'sum', 'limit', 'determinant', 'invert', 'taylor'];
         const isFailure = 
             (operation !== 'evaluate') && 
             failKeywords.some(kw => resultString.includes(kw) && resultString.includes('('));
@@ -193,7 +224,13 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                   algString = `d(${expression},${variable})`;
                   break;
                 case 'solve':
-                   algString = `roots(${expression},${variable})`;
+                   if (expression.includes(',')) {
+                      // Algebrite isn't great at systems via one command, usually returns list of roots.
+                      // Try implicit "roots"
+                      algString = `roots(${expression})`; // This might be weak for systems
+                   } else {
+                      algString = `roots(${expression},${variable})`;
+                   }
                    break;
                 case 'sum':
                    algString = `sum(${expression},${variable},${start},${end})`;
@@ -203,6 +240,16 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                    break;
                 case 'simplify':
                    algString = `simplify(${expression})`;
+                   break;
+                case 'determinant':
+                   algString = `det(${formatMatrixForAlgebrite(expression)})`;
+                   break;
+                case 'invert':
+                   algString = `inv(${formatMatrixForAlgebrite(expression)})`;
+                   break;
+                case 'taylor':
+                   // taylor(f,x,a,n) -> function, variable, center, order
+                   algString = `taylor(${expression},${variable},${start || '0'},${end || '4'})`;
                    break;
                 default:
                    algString = expression;
@@ -252,6 +299,8 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
       }
 
       if (solved) {
+        // Cleanup LaTeX: remove \text{} wrappers that Algebrite/Nerdamer sometimes add which fail in KaTeX
+        finalLatex = finalLatex.replace(/\\text{([^}]*)}/g, '$1');
         setResultLatex(finalLatex.startsWith('$$') ? finalLatex : `$$${finalLatex}$$`);
       } else {
         throw new Error("Unable to solve symbolically with available engines.");
@@ -311,7 +360,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                         type="text" 
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder="e.g., Integrate sin(x) from 0 to pi"
+                        placeholder="e.g., Determinant of [[1,2],[3,4]]"
                         className="w-full pl-4 pr-14 py-4 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all text-slate-900 dark:text-slate-100"
                         autoFocus
                     />
