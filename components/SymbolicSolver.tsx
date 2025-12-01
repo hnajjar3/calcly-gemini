@@ -53,10 +53,13 @@ const formatMatrixToLatex = (str: string): string => {
           const content = row.slice(1, -1);
           // Split by comma
           return content.split(',').map(val => {
-              // formatting cleanup for values, e.g. 1/2 -> \frac{1}{2} if needed, 
-              // but Katex often handles 1/2 fine or we can rely on standard text.
-              // Nerdamer toTeX is better for fractions, but let's do basic cleanup
-              return val.trim().replace(/\*/g, '');
+              const cleaned = val.trim().replace(/\*/g, '');
+              // Convert simple fractions a/b to \frac{a}{b}
+              if (/^-?\d+\/\d+$/.test(cleaned)) {
+                  const [n, d] = cleaned.split('/');
+                  return `\\frac{${n}}{${d}}`;
+              }
+              return cleaned;
           }).join(' & ');
         });
         
