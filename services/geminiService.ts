@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { SolverResponse, ModelMode } from "../types";
 
@@ -214,7 +215,7 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
   const systemInstruction = `
-    You are a math syntax parser. Your goal is to map natural language math queries into a specific structured JSON command object.
+    You are a math syntax parser. Your goal is to map natural language math queries into a specific structured JSON command object for a Computer Algebra System.
     
     Operations: 
     - "integrate" (definite and indefinite)
@@ -236,15 +237,16 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
       * CRITICAL: Do NOT include 'dx' or 'dt' in integrals. Just the integrand.
       * MATRICES: Return matrices in standard JS array format: [[1,2],[3,4]].
       * SYSTEMS: For multiple equations, separate them with commas (e.g., "x+y=1, x-y=2").
+      * ASSIGNMENTS: If user says "A = hilbert(3)", strip the assignment. Expression is just "hilbert(3)".
       * Example: "integrate sin(x) dx" -> expression: "sin(x)"
       * Example: "y = x^2 + 2" -> expression: "x^2 + 2"
     - variable: The independent variable(s) (e.g., "x", "n", or "x,y" for systems). Default to "x".
     - start: (Optional) Lower bound for integrals/sums, OR center point for Taylor series (default 0).
     - end: (Optional) Upper bound for integrals/sums, OR order/terms for Taylor series (default 4).
     - preferredEngine: (Optional) "nerdamer" or "algebrite".
-      * Use "algebrite" for: Specialized functions like 'hilbert', 'legendre', 'bessel', 'circular' matrices.
-      * Use "nerdamer" for: Standard integrals, derivatives, limits, solving systems, standard matrices.
-      * Default to "nerdamer" if unsure.
+      * ALWAYS use "algebrite" for specialized functions: 'hilbert', 'legendre', 'bessel', 'circular' matrices, 'roots', 'factor', 'laguerre', 'hermite'.
+      * Use "nerdamer" for standard calculus: 'integrate', 'differentiate', 'solve' (linear systems), 'limit', 'determinant', 'invert'.
+      * If unsure, default to "nerdamer".
 
     Examples:
     1. "Integrate sin(x)" -> { "operation": "integrate", "expression": "sin(x)", "variable": "x", "preferredEngine": "nerdamer" }
@@ -255,6 +257,7 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
     6. "Taylor series of cos(x) at 0" -> { "operation": "taylor", "expression": "cos(x)", "variable": "x", "start": "0", "end": "4", "preferredEngine": "nerdamer" }
     7. "Solve x+y=5, x-y=1" -> { "operation": "solve", "expression": "x+y=5, x-y=1", "variable": "x,y", "preferredEngine": "nerdamer" }
     8. "Hilbert matrix of size 3" -> { "operation": "evaluate", "expression": "hilbert(3)", "preferredEngine": "algebrite" }
+    9. "A = hilbert(3)" -> { "operation": "evaluate", "expression": "hilbert(3)", "preferredEngine": "algebrite" }
     
     Return ONLY valid raw JSON.
   `;
