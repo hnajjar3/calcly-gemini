@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle, Calculator, Zap, Terminal, CheckCircle2 } from 'lucide-react';
 import { parseMathCommand, MathCommand } from '../services/geminiService';
@@ -14,7 +15,14 @@ const getAlgebrite = () => {
 // Helper to check nerdamer presence
 const getNerdamer = () => {
   // @ts-ignore
-  return (typeof nerdamer !== 'undefined' ? nerdamer : undefined) || (window as any).nerdamer;
+  const n = (typeof nerdamer !== 'undefined' ? nerdamer : undefined) || (window as any).nerdamer;
+  // Check if plugins are loaded (e.g. solveEquations exists) to ensure full library
+  if (n && !n.solveEquations) {
+      // Core might be loaded but plugins missing, treat as missing/partial for safety if needed
+      // but usually core has 'solve'. solveEquations comes from Algebra plugin.
+      // We will try to use it anyway but aware it might be partial.
+  }
+  return n;
 };
 
 // Helper to convert array syntax [[1,2],[3,4]] to nerdamer "matrix([1,2],[3,4])"
@@ -266,6 +274,8 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                   break;
                 case 'solve':
                    if (expression.includes(',')) {
+                      // Algebrite isn't great at systems in simplified mode, but we can try roots for simple cases
+                      // Or just let it fail to show error
                       algString = `roots(${expression})`; 
                    } else {
                       algString = `roots(${expression},${variable})`;
