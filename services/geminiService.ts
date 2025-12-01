@@ -207,6 +207,7 @@ export interface MathCommand {
   variable?: string;
   start?: string; // Used for bounds OR taylor series center point
   end?: string; // Used for bounds OR taylor series order
+  preferredEngine?: 'nerdamer' | 'algebrite';
 }
 
 export const parseMathCommand = async (query: string): Promise<MathCommand> => {
@@ -240,16 +241,20 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
     - variable: The independent variable(s) (e.g., "x", "n", or "x,y" for systems). Default to "x".
     - start: (Optional) Lower bound for integrals/sums, OR center point for Taylor series (default 0).
     - end: (Optional) Upper bound for integrals/sums, OR order/terms for Taylor series (default 4).
+    - preferredEngine: (Optional) "nerdamer" or "algebrite".
+      * Use "algebrite" for: Specialized functions like 'hilbert', 'legendre', 'bessel', 'circular' matrices.
+      * Use "nerdamer" for: Standard integrals, derivatives, limits, solving systems, standard matrices.
+      * Default to "nerdamer" if unsure.
 
     Examples:
-    1. "Integrate sin(x)" -> { "operation": "integrate", "expression": "sin(x)", "variable": "x" }
-    2. "Integrate x^2 from 0 to 10" -> { "operation": "integrate", "expression": "x^2", "variable": "x", "start": "0", "end": "10" }
-    3. "Sum of 1/n! from 1 to infinity" -> { "operation": "sum", "expression": "1/factorial(n)", "variable": "n", "start": "1", "end": "Infinity" }
-    4. "Solve x^2 - 4 = 0" -> { "operation": "solve", "expression": "x^2 - 4 = 0", "variable": "x" }
-    5. "Determinant of [[1,2],[3,4]]" -> { "operation": "determinant", "expression": "[[1,2],[3,4]]" }
-    6. "Taylor series of cos(x) at 0" -> { "operation": "taylor", "expression": "cos(x)", "variable": "x", "start": "0", "end": "4" }
-    7. "Solve x+y=5, x-y=1" -> { "operation": "solve", "expression": "x+y=5, x-y=1", "variable": "x,y" }
-    8. "Invert matrix [[1,2],[3,4]]" -> { "operation": "invert", "expression": "[[1,2],[3,4]]" }
+    1. "Integrate sin(x)" -> { "operation": "integrate", "expression": "sin(x)", "variable": "x", "preferredEngine": "nerdamer" }
+    2. "Integrate x^2 from 0 to 10" -> { "operation": "integrate", "expression": "x^2", "variable": "x", "start": "0", "end": "10", "preferredEngine": "nerdamer" }
+    3. "Sum of 1/n! from 1 to infinity" -> { "operation": "sum", "expression": "1/factorial(n)", "variable": "n", "start": "1", "end": "Infinity", "preferredEngine": "nerdamer" }
+    4. "Solve x^2 - 4 = 0" -> { "operation": "solve", "expression": "x^2 - 4 = 0", "variable": "x", "preferredEngine": "nerdamer" }
+    5. "Determinant of [[1,2],[3,4]]" -> { "operation": "determinant", "expression": "[[1,2],[3,4]]", "preferredEngine": "nerdamer" }
+    6. "Taylor series of cos(x) at 0" -> { "operation": "taylor", "expression": "cos(x)", "variable": "x", "start": "0", "end": "4", "preferredEngine": "nerdamer" }
+    7. "Solve x+y=5, x-y=1" -> { "operation": "solve", "expression": "x+y=5, x-y=1", "variable": "x,y", "preferredEngine": "nerdamer" }
+    8. "Hilbert matrix of size 3" -> { "operation": "evaluate", "expression": "hilbert(3)", "preferredEngine": "algebrite" }
     
     Return ONLY valid raw JSON.
   `;
@@ -276,6 +281,6 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
   } catch (e) {
     console.error("Failed to parse math command JSON", text);
     // Fallback simple evaluate with raw query, though likely to fail in pure symbolic mode
-    return { operation: 'evaluate', expression: query };
+    return { operation: 'evaluate', expression: query, preferredEngine: 'nerdamer' };
   }
 };
