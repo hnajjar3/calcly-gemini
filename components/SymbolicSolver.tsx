@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle, Calculator, Zap, Terminal } from 'lucide-react';
+import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle, Calculator, Zap, Terminal, CheckCircle2 } from 'lucide-react';
 import { parseMathCommand, MathCommand } from '../services/geminiService';
 import { LatexRenderer } from './LatexRenderer';
 
@@ -47,6 +47,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
       
       setLibraryStatus({ nerdamer: nCheck, algebrite: aCheck });
 
+      // Continue polling if either is missing
       if ((!nCheck || !aCheck) && attempts < maxAttempts) {
         attempts++;
         setTimeout(checkLibraries, 200);
@@ -72,6 +73,11 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
     setDecimalResult(null);
     setUsedEngine(null);
     setDebugLog([]);
+
+    // Final check for libraries right before execution
+    const nCheck = !!getNerdamer();
+    const aCheck = !!getAlgebrite();
+    setLibraryStatus({ nerdamer: nCheck, algebrite: aCheck });
 
     try {
       // 1. Get Structured Command from Gemini
@@ -280,13 +286,12 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
 
         <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
             
-            {/* Library Status Warning */}
-            {(!libraryStatus.nerdamer || !libraryStatus.algebrite) && (
+            {/* Library Status Warning - Only show if both missing */}
+            {(!libraryStatus.nerdamer && !libraryStatus.algebrite) && (
                 <div className="mb-4 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/30 rounded-lg flex items-center justify-between text-xs text-amber-600 dark:text-amber-400">
-                   <span>
-                      {!libraryStatus.nerdamer && "Nerdamer library missing. "}
-                      {!libraryStatus.algebrite && "Algebrite library missing. "}
-                      Symbolic capabilities may be limited (Retrying...).
+                   <span className="flex items-center">
+                      <RefreshCw className="w-3 h-3 mr-2 animate-spin" />
+                      Loading Math Libraries...
                    </span>
                 </div>
             )}
@@ -348,10 +353,10 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                     )}
 
                     {/* Final Result */}
-                    <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-slate-800 dark:to-slate-800/50 border border-indigo-100 dark:border-indigo-900/30 rounded-xl p-6 shadow-md relative">
+                    <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-slate-800 dark:to-slate-800/50 border border-indigo-100 dark:border-indigo-900/30 rounded-xl p-6 shadow-md relative group">
                          {usedEngine && (
                             <div className="absolute top-3 right-3 flex items-center px-2 py-1 rounded-md bg-white/50 dark:bg-black/20 border border-indigo-100 dark:border-indigo-900/20">
-                                <Zap className="w-3 h-3 text-amber-500 mr-1.5" />
+                                <CheckCircle2 className="w-3 h-3 text-emerald-500 mr-1.5" />
                                 <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
                                    Solved by {usedEngine}
                                 </span>
