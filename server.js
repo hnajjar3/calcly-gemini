@@ -10,6 +10,11 @@ const app = express();
 // Cloud Run requires binding to 0.0.0.0 (env.PORT usually provided)
 const PORT = process.env.PORT || 8080;
 
+// Log startup environment status (Don't log the actual key value for security)
+console.log("Starting server...");
+console.log("Environment API_KEY present:", !!process.env.API_KEY);
+console.log("Environment GEMINI_API_KEY present:", !!process.env.GEMINI_API_KEY);
+
 // Serve static files from the build directory
 app.use(express.static(path.join(__dirname, 'dist')));
 
@@ -28,7 +33,6 @@ app.get('*', (req, res) => {
     // We strictly select keys we want to expose to the client
     const runtimeEnv = {
       API_KEY: process.env.API_KEY || process.env.GEMINI_API_KEY,
-      // Add other safe public keys here if needed
     };
 
     // Inject env vars into the HTML placeholder
