@@ -249,6 +249,7 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
     5. "Determinant of [[1,2],[3,4]]" -> { "operation": "determinant", "expression": "[[1,2],[3,4]]" }
     6. "Taylor series of cos(x) at 0" -> { "operation": "taylor", "expression": "cos(x)", "variable": "x", "start": "0", "end": "4" }
     7. "Solve x+y=5, x-y=1" -> { "operation": "solve", "expression": "x+y=5, x-y=1", "variable": "x,y" }
+    8. "Invert matrix [[1,2],[3,4]]" -> { "operation": "invert", "expression": "[[1,2],[3,4]]" }
     
     Return ONLY valid raw JSON.
   `;

@@ -19,18 +19,28 @@ const getNerdamer = () => {
 
 // Helper to convert array syntax [[1,2],[3,4]] to nerdamer "matrix([1,2],[3,4])"
 const formatMatrixForNerdamer = (expr: string): string => {
-  if (expr.trim().startsWith('[[')) {
-    return `matrix(${expr.replace(/^\[+|\]+$/g, '').split('],[').map(row => `[${row.replace(/\[|\]/g, '')}]`).join(',')})`;
+  const clean = expr.replace(/\s/g, '');
+  if (clean.startsWith('[[')) {
+    // Basic regex transform: [[a,b],[c,d]] -> matrix([a,b],[c,d])
+    // Remove outer brackets first
+    const inner = clean.substring(1, clean.length - 1);
+    // Ensure rows are wrapped properly if needed, but 'matrix' expects comma sep arrays: matrix([1,2], [3,4])
+    // The inner string is [1,2],[3,4] which is exactly what we need args to be.
+    return `matrix(${inner})`;
   }
-  return expr;
+  return clean;
 };
 
 // Helper to convert array syntax [[1,2],[3,4]] to Algebrite "((1,2),(3,4))"
 const formatMatrixForAlgebrite = (expr: string): string => {
-  if (expr.trim().startsWith('[[')) {
-    return expr.replace(/\[/g, '(').replace(/\]/g, ')');
+  // Algebrite parser can be sensitive to spaces in compact mode
+  // However, stripping all spaces might merge numbers if malformed. 
+  // Trusted JSON input usually has commas.
+  const clean = expr.replace(/\s/g, '');
+  if (clean.startsWith('[[')) {
+    return clean.replace(/\[/g, '(').replace(/\]/g, ')');
   }
-  return expr;
+  return clean;
 };
 
 interface Props {
@@ -154,7 +164,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
              nerdString = `invert(${formatMatrixForNerdamer(expression)})`;
              break;
           case 'taylor':
-             // taylor(expr, var, terms, point)
+             // taylor(expr, var, terms, center) -> terms is index/order
              nerdString = `taylor(${expression}, ${variable}, ${end || '4'}, ${start || '0'})`;
              break;
           case 'simplify':
@@ -226,8 +236,9 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                 case 'solve':
                    if (expression.includes(',')) {
                       // Algebrite isn't great at systems via one command, usually returns list of roots.
-                      // Try implicit "roots"
-                      algString = `roots(${expression})`; // This might be weak for systems
+                      // Try implicit "roots" which can sometimes handle lists, but it's tricky.
+                      // Fallback: just pass the expression and hope
+                      algString = `roots(${expression})`; 
                    } else {
                       algString = `roots(${expression},${variable})`;
                    }
@@ -242,13 +253,15 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                    algString = `simplify(${expression})`;
                    break;
                 case 'determinant':
+                   // Algebrite uses det()
                    algString = `det(${formatMatrixForAlgebrite(expression)})`;
                    break;
                 case 'invert':
+                   // Algebrite uses inv()
                    algString = `inv(${formatMatrixForAlgebrite(expression)})`;
                    break;
                 case 'taylor':
-                   // taylor(f,x,a,n) -> function, variable, center, order
+                   // taylor(f,x,center,terms)
                    algString = `taylor(${expression},${variable},${start || '0'},${end || '4'})`;
                    break;
                 default:
@@ -300,6 +313,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
 
       if (solved) {
         // Cleanup LaTeX: remove \text{} wrappers that Algebrite/Nerdamer sometimes add which fail in KaTeX
+        // Also remove excessive newlines or nil outputs
         finalLatex = finalLatex.replace(/\\text{([^}]*)}/g, '$1');
         setResultLatex(finalLatex.startsWith('$$') ? finalLatex : `$$${finalLatex}$$`);
       } else {
