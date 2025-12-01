@@ -218,15 +218,20 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
               
               // Convert ASCII result to LaTeX
               try {
-                 // Try to use nerdamer to format the output of Algebrite
+                 // Try to use nerdamer to format the output of Algebrite if available
                  if (NerdamerEngine) {
-                    finalLatex = NerdamerEngine(res).toTeX();
+                    try {
+                        finalLatex = NerdamerEngine(res).toTeX();
+                    } catch(nErr) {
+                         // Nerdamer couldn't parse Algebrite output, fallback to raw cleaning
+                         finalLatex = res.replace(/\*/g, '');
+                    }
                  } else {
-                    finalLatex = `\\text{${res}}`;
+                    // Raw cleaning: Remove asterisks to make it look like math (2*x -> 2x)
+                    finalLatex = res.replace(/\*/g, '');
                  }
               } catch (e) {
-                 // Fallback to text wrapped in latex
-                 finalLatex = `\\text{${res}}`; 
+                 finalLatex = res.replace(/\*/g, ''); 
               }
 
               setUsedEngine('Algebrite');
@@ -286,7 +291,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
 
         <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
             
-            {/* Library Status Warning - Only show if both missing */}
+            {/* Library Status Warning - Only show if both missing AND we've finished checking */}
             {(!libraryStatus.nerdamer && !libraryStatus.algebrite) && (
                 <div className="mb-4 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/30 rounded-lg flex items-center justify-between text-xs text-amber-600 dark:text-amber-400">
                    <span className="flex items-center">
