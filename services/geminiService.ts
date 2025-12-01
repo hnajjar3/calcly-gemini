@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { SolverResponse, ModelMode } from "../types";
 
@@ -242,9 +243,9 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
     - start: (Optional) Lower bound for integrals/sums, OR center point for Taylor series (default 0).
     - end: (Optional) Upper bound for integrals/sums, OR order/terms for Taylor series (default 4).
     - preferredEngine: (Optional) "nerdamer" or "algebrite".
-      * Use "algebrite" for: Specialized functions like 'hilbert', 'legendre', 'bessel', 'circular' matrices.
-      * Use "nerdamer" for: Standard integrals, derivatives, limits, solving systems, standard matrices.
-      * Default to "nerdamer" if unsure.
+      * ALWAYS use "algebrite" for: Specialized functions like 'hilbert', 'legendre', 'bessel', 'circular' matrices, 'roots', 'factor'.
+      * Use "nerdamer" for: Standard 'integrate', 'differentiate', 'solve' (linear systems), 'limit', 'determinant', 'invert'.
+      * If unsure, default to "nerdamer".
 
     Examples:
     1. "Integrate sin(x)" -> { "operation": "integrate", "expression": "sin(x)", "variable": "x", "preferredEngine": "nerdamer" }
