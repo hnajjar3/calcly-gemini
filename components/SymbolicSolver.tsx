@@ -24,8 +24,6 @@ const formatMatrixForNerdamer = (expr: string): string => {
     // Basic regex transform: [[a,b],[c,d]] -> matrix([a,b],[c,d])
     // Remove outer brackets first
     const inner = clean.substring(1, clean.length - 1);
-    // Ensure rows are wrapped properly if needed, but 'matrix' expects comma sep arrays: matrix([1,2], [3,4])
-    // The inner string is [1,2],[3,4] which is exactly what we need args to be.
     return `matrix(${inner})`;
   }
   return clean;
@@ -33,12 +31,42 @@ const formatMatrixForNerdamer = (expr: string): string => {
 
 // Helper to convert array syntax [[1,2],[3,4]] to Algebrite syntax
 const formatMatrixForAlgebrite = (expr: string): string => {
-  // For Algebrite, maintaining standard bracket syntax is often safer than converting to parens
-  // if parens conversion is causing syntax errors.
-  // We strip spaces to ensure no parser ambiguity.
-  const clean = expr.replace(/\s/g, '');
-  // If it's standard JS array syntax, Algebrite often accepts it directly or with [...]
-  return clean;
+  // Algebrite accepts square brackets: [[1,2],[3,4]]
+  return expr.replace(/\s/g, '');
+};
+
+// Custom formatter to turn string list [[1,2],[3,4]] into LaTeX bmatrix
+const formatMatrixToLatex = (str: string): string => {
+  // Check for pattern [[...],[...]]
+  // Allow spaces, fractions, negative numbers
+  if (/^\[\s*\[.*\]\s*\]$/.test(str)) {
+    try {
+      // Extract inner content: [1,2],[3,4]
+      const inner = str.trim().slice(1, -1);
+      
+      // Match individual rows: [1,2] or [1/2, 3]
+      const rows = inner.match(/\[.*?\]/g);
+      
+      if (rows && rows.length > 0) {
+        const latexRows = rows.map(row => {
+          // Remove brackets [ ... ]
+          const content = row.slice(1, -1);
+          // Split by comma
+          return content.split(',').map(val => {
+              // formatting cleanup for values, e.g. 1/2 -> \frac{1}{2} if needed, 
+              // but Katex often handles 1/2 fine or we can rely on standard text.
+              // Nerdamer toTeX is better for fractions, but let's do basic cleanup
+              return val.trim().replace(/\*/g, '');
+          }).join(' & ');
+        });
+        
+        return `\\begin{bmatrix} ${latexRows.join(' \\\\ ')} \\end{bmatrix}`;
+      }
+    } catch (e) {
+      // console.log("Matrix parsing failed", e);
+    }
+  }
+  return str;
 };
 
 interface Props {
@@ -235,9 +263,6 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                   break;
                 case 'solve':
                    if (expression.includes(',')) {
-                      // Algebrite isn't great at systems via one command, usually returns list of roots.
-                      // Try implicit "roots" which can sometimes handle lists, but it's tricky.
-                      // Fallback: just pass the expression and hope
                       algString = `roots(${expression})`; 
                    } else {
                       algString = `roots(${expression},${variable})`;
@@ -276,23 +301,28 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                 throw new Error(`Algebrite returned error: ${res}`);
               }
               
-              // Convert ASCII result to LaTeX
-              try {
-                 // Try to use nerdamer to format the output of Algebrite if available
-                 if (NerdamerEngine) {
-                    try {
-                        finalLatex = NerdamerEngine(res).toTeX();
-                    } catch(nErr) {
-                         // Nerdamer couldn't parse Algebrite output, fallback to raw cleaning
-                         // Remove asterisks to make it look like math (2*x -> 2x)
-                         finalLatex = res.replace(/\*/g, '');
-                    }
-                 } else {
-                    // Raw cleaning
-                    finalLatex = res.replace(/\*/g, '');
-                 }
-              } catch (e) {
-                 finalLatex = res.replace(/\*/g, ''); 
+              // MATRIX DISPLAY FIX: 
+              // Algebrite often returns [[a,b],[c,d]]. Detect this and convert to LaTeX matrix
+              if (/^\[\s*\[/.test(res)) {
+                   finalLatex = formatMatrixToLatex(res);
+                   addLog(`Formatted Matrix LaTeX: ${finalLatex}`);
+              } else {
+                   // Convert standard ASCII result to LaTeX
+                   try {
+                       // Try to use nerdamer to format the output of Algebrite if available
+                       if (NerdamerEngine) {
+                          try {
+                              // Sometimes Algebrite output is simple enough for Nerdamer to parse and TeXify
+                              finalLatex = NerdamerEngine(res).toTeX();
+                          } catch(nErr) {
+                               finalLatex = res.replace(/\*/g, '');
+                          }
+                       } else {
+                          finalLatex = res.replace(/\*/g, '');
+                       }
+                   } catch (e) {
+                       finalLatex = res.replace(/\*/g, ''); 
+                   }
               }
 
               setUsedEngine('Algebrite');
@@ -314,8 +344,8 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
 
       if (solved) {
         // Cleanup LaTeX: remove \text{} wrappers that Algebrite/Nerdamer sometimes add which fail in KaTeX
-        // Also remove excessive newlines or nil outputs
         finalLatex = finalLatex.replace(/\\text{([^}]*)}/g, '$1');
+        
         setResultLatex(finalLatex.startsWith('$$') ? finalLatex : `$$${finalLatex}$$`);
       } else {
         throw new Error("Unable to solve symbolically with available engines.");
