@@ -31,15 +31,13 @@ const formatMatrixForNerdamer = (expr: string): string => {
   return clean;
 };
 
-// Helper to convert array syntax [[1,2],[3,4]] to Algebrite "((1,2),(3,4))"
+// Helper to convert array syntax [[1,2],[3,4]] to Algebrite syntax
 const formatMatrixForAlgebrite = (expr: string): string => {
-  // Algebrite parser can be sensitive to spaces in compact mode
-  // However, stripping all spaces might merge numbers if malformed. 
-  // Trusted JSON input usually has commas.
+  // For Algebrite, maintaining standard bracket syntax is often safer than converting to parens
+  // if parens conversion is causing syntax errors.
+  // We strip spaces to ensure no parser ambiguity.
   const clean = expr.replace(/\s/g, '');
-  if (clean.startsWith('[[')) {
-    return clean.replace(/\[/g, '(').replace(/\]/g, ')');
-  }
+  // If it's standard JS array syntax, Algebrite often accepts it directly or with [...]
   return clean;
 };
 
@@ -165,6 +163,8 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
              break;
           case 'taylor':
              // taylor(expr, var, terms, center) -> terms is index/order
+             // Note: nerdamer.taylor arguments are (expression, variable, terms, center)
+             // Default order to 4 if not provided
              nerdString = `taylor(${expression}, ${variable}, ${end || '4'}, ${start || '0'})`;
              break;
           case 'simplify':
@@ -284,10 +284,11 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                         finalLatex = NerdamerEngine(res).toTeX();
                     } catch(nErr) {
                          // Nerdamer couldn't parse Algebrite output, fallback to raw cleaning
+                         // Remove asterisks to make it look like math (2*x -> 2x)
                          finalLatex = res.replace(/\*/g, '');
                     }
                  } else {
-                    // Raw cleaning: Remove asterisks to make it look like math (2*x -> 2x)
+                    // Raw cleaning
                     finalLatex = res.replace(/\*/g, '');
                  }
               } catch (e) {
