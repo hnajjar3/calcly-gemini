@@ -1,4 +1,5 @@
-export const APP_NAME = "OmniSolver";
+
+export const APP_NAME = "Calcly";
 export const SAMPLE_QUERIES = [
   "Integrate x^2 * sin(x) from 0 to 10",
   "Compare the GDP of Japan, Germany, and India over the last 10 years",
