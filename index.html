@@ -32,6 +32,9 @@
     <!-- Algebrite Symbolic Math Library (Browser Bundle) -->
     <script defer src="https://cdn.jsdelivr.net/npm/algebrite@1.4.0/dist/algebrite.bundle-for-browser.min.js"></script>
 
+    <!-- Marked for Markdown Rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
     <style>
       /* Custom scrollbar for a cleaner look */
       ::-webkit-scrollbar {
@@ -71,6 +74,38 @@
       pre[class*="language-"] {
         margin: 0 !important;
         border-radius: 0.5rem;
+      }
+      /* Markdown Content Styles */
+      .markdown-content p {
+        margin-bottom: 0.75em;
+      }
+      .markdown-content p:last-child {
+        margin-bottom: 0;
+      }
+      .markdown-content strong {
+        font-weight: 600;
+        color: inherit;
+      }
+      .markdown-content em {
+        font-style: italic;
+      }
+      .markdown-content ul {
+        list-style-type: disc;
+        padding-left: 1.5em;
+        margin-bottom: 0.75em;
+      }
+      .markdown-content ol {
+        list-style-type: decimal;
+        padding-left: 1.5em;
+        margin-bottom: 0.75em;
+      }
+      .markdown-content li {
+        margin-bottom: 0.25em;
+      }
+      .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+        font-weight: 700;
+        margin-top: 1em;
+        margin-bottom: 0.5em;
       }
     </style>
   <script type="importmap">

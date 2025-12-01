@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { ArrowRight, Sparkles, Cpu, Search, RefreshCw, Zap, Brain, Image as ImageIcon, Camera, X, Sun, Moon, Calculator as CalcIcon, Mic, Square, Sigma } from './components/icons';
 import { HistoryItem, ModelMode } from './types';
@@ -221,11 +222,11 @@ const App: React.FC = () => {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-grow pt-24 pb-48 px-4 sm:px-6 w-full max-w-7xl mx-auto">
+      <main className="flex-grow pt-24 pb-48 px-4 sm:px-6 w-full max-w-5xl mx-auto flex flex-col items-center">
         
         {/* Welcome State */}
         {history.length === 0 && (
-          <div className="flex flex-col items-center justify-center min-h-[50vh] text-center space-y-8 animate-fade-in-up">
+          <div className="flex flex-col items-center justify-center min-h-[50vh] text-center space-y-8 animate-fade-in-up w-full">
             <div className="space-y-4 max-w-2xl">
               <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white tracking-tight">
                 What do you want to <span className="text-indigo-600 dark:text-indigo-400">know</span>?
@@ -251,7 +252,7 @@ const App: React.FC = () => {
         )}
 
         {/* Results Feed */}
-        <div className="space-y-6">
+        <div className="space-y-12 w-full">
           {history.map((item) => (
             <ResultCard 
               key={item.id} 
@@ -268,7 +269,7 @@ const App: React.FC = () => {
 
       {/* Sticky Footer Input */}
       <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent dark:from-slate-900 dark:via-slate-900 pt-4 pb-6 px-4 z-40 transition-colors">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-3xl mx-auto w-full">
           {/* Controls Bar */}
           <div className="flex justify-between items-end mb-2 px-1">
              <div className="flex space-x-1 bg-white dark:bg-slate-800 p-1 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm">
