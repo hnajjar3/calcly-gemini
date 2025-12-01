@@ -46,8 +46,9 @@ const formatMatrixForAlgebrite = (expr: string): string => {
 // Custom formatter to turn string list [[1,2],[3,4]] into LaTeX bmatrix
 const formatMatrixToLatex = (str: string): string => {
   // Check for pattern [[...],[...]]
-  // Allow spaces, fractions, negative numbers
-  if (/^\[\s*\[.*\]\s*\]$/.test(str)) {
+  // Allow spaces, newlines, fractions, negative numbers
+  // Using [\s\S]* to match across newlines if necessary
+  if (/^\[\s*\[[\s\S]*\]\s*\]$/.test(str)) {
     try {
       // Extract inner content: [1,2],[3,4]
       const inner = str.trim().slice(1, -1);
@@ -102,7 +103,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
     if (!isOpen) return;
 
     let attempts = 0;
-    const maxAttempts = 25; // Try for ~5 seconds
+    const maxAttempts = 30; // Try for ~6 seconds
     
     const checkLibraries = () => {
       const nCheck = !!getNerdamer();
