@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Hash, Play, RefreshCw, AlertTriangle, Terminal, Trash2, Copy, CheckCircle2 } from '../components/icons';
+import { X, Nu, Play, RefreshCw, AlertTriangle, Terminal, Trash2, Copy, CheckCircle2 } from '../components/icons';
 import { parseNumericalExpression } from '../services/geminiService';
 
 declare const math: any;
@@ -124,7 +124,7 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose }) => {
         <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-slate-700/50 bg-emerald-50/50 dark:bg-emerald-900/10">
           <div className="flex items-center space-x-2 text-emerald-700 dark:text-emerald-400">
             <div className="p-1.5 bg-emerald-100 dark:bg-emerald-900/50 rounded-lg">
-                <Hash className="w-5 h-5" />
+                <Nu className="w-5 h-5" />
             </div>
             <div>
                 <h3 className="font-bold text-lg leading-tight">Numerical Solver</h3>
