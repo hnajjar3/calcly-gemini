@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowRight, Sparkles, Cpu, Search, RefreshCw, Zap, Brain, Image as ImageIcon, Camera, X, Sun, Moon, Calculator as CalcIcon, Mic, Square, Sigma, Plus } from './components/icons';
+import { ArrowRight, Sparkles, Cpu, Search, RefreshCw, Zap, Brain, Image as ImageIcon, Camera, X, Sun, Moon, Calculator as CalcIcon, Mic, Square, Sigma, Plus, Hash } from './components/icons';
 import { HistoryItem, ModelMode } from './types';
 import { solveQuery } from './services/geminiService';
 import { ResultCard } from './components/ResultCard';
 import { BasicCalculator } from './components/BasicCalculator';
 import { SymbolicSolver } from './components/SymbolicSolver';
+import { NumericalSolver } from './components/NumericalSolver';
 import { SAMPLE_QUERIES, APP_NAME } from './constants';
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -20,6 +21,7 @@ const App: React.FC = () => {
   const [theme, setTheme] = useState<Theme>('light');
   const [showCalculator, setShowCalculator] = useState(false);
   const [showSymbolicSolver, setShowSymbolicSolver] = useState(false);
+  const [showNumericalSolver, setShowNumericalSolver] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -258,6 +260,14 @@ const App: React.FC = () => {
           >
             <Sigma className="w-5 h-5" />
           </button>
+          
+           <button
+            onClick={() => setShowNumericalSolver(true)}
+            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
+            title="Open Numerical Solver (Math.js)"
+          >
+            <Hash className="w-5 h-5" />
+          </button>
 
           <button
             onClick={() => setShowCalculator(true)}
@@ -438,6 +448,9 @@ const App: React.FC = () => {
       
       {/* Symbolic Solver Modal */}
       <SymbolicSolver isOpen={showSymbolicSolver} onClose={() => setShowSymbolicSolver(false)} />
+
+      {/* Numerical Solver Modal */}
+      <NumericalSolver isOpen={showNumericalSolver} onClose={() => setShowNumericalSolver(false)} />
 
     </div>
   );

@@ -31,7 +31,9 @@ import {
   Equal,
   ExternalLink,
   Lightbulb,
-  Plus
+  Plus,
+  Hash,
+  Trash2
 } from 'lucide-react';
 
 export { 
@@ -65,5 +67,7 @@ export {
   Equal,
   ExternalLink,
   Lightbulb,
-  Plus
+  Plus,
+  Hash,
+  Trash2
 };

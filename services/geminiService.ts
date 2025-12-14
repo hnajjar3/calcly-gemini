@@ -350,3 +350,52 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
     return { operation: 'evaluate', expression: query, preferredEngine: 'nerdamer' };
   }
 };
+
+export const parseNumericalExpression = async (query: string): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+  
+  const systemInstruction = `
+    You are a Math.js Translator. Your goal is to convert natural language queries into valid Math.js syntax for execution.
+
+    Target Library: Math.js (supports arithmetic, complex numbers, matrices, units, statistics, probability).
+
+    OUTPUT JSON SCHEMA:
+    {
+      "expression": "string"
+    }
+
+    EXAMPLES:
+    - Input: "calculate the mean of 1, 2, 3, and 4" -> Output: {"expression": "mean([1, 2, 3, 4])"}
+    - Input: "convert 50 miles to kilometers" -> Output: {"expression": "50 mile to km"}
+    - Input: "determinant of matrix [[1,2],[3,4]]" -> Output: {"expression": "det([[1,2],[3,4]])"}
+    - Input: "sin of 90 degrees" -> Output: {"expression": "sin(90 deg)"}
+    - Input: "1 plus 2" -> Output: {"expression": "1 + 2"}
+    - Input: "set a equals 10" -> Output: {"expression": "a = 10"}
+    - Input: "complex number 2 plus 3i times 4" -> Output: {"expression": "(2 + 3i) * 4"}
+
+    RULES:
+    1. Return ONLY valid Math.js expression string within the JSON.
+    2. Do not solve the problem. Only translate syntax.
+    3. If input is already valid math, return it as is.
+    4. For units, use math.js unit syntax (e.g. "deg", "cm", "inch", "kg").
+  `;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: { parts: [{ text: query }] },
+    config: {
+      systemInstruction: systemInstruction,
+      thinkingConfig: { thinkingBudget: 0 },
+      responseMimeType: 'application/json'
+    }
+  });
+
+  const jsonText = extractJSON(response.text || '', 'expression');
+
+  try {
+    const parsed = JSON.parse(jsonText);
+    return parsed.expression || query;
+  } catch (e) {
+    return query; // Fallback to raw input
+  }
+};
