@@ -68,11 +68,52 @@ const schemaDefinition = `
 }
 `;
 
+// Robust JSON Extractor
+const extractJSON = (raw: string, requiredKey?: string): string => {
+  let text = raw.trim();
+
+  // 1. Try markdown code block extraction
+  const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+  if (jsonBlockMatch) return jsonBlockMatch[1];
+  
+  const genericBlockMatch = text.match(/```\s*([\s\S]*?)\s*```/);
+  if (genericBlockMatch) return genericBlockMatch[1];
+
+  // 2. Heuristic: Look for specific schema keys to find the real start if provided
+  if (requiredKey) {
+    const keyIndex = text.indexOf(`"${requiredKey}"`);
+    if (keyIndex !== -1) {
+        // Find the opening brace belonging to this key. 
+        // It should be the closest '{' before this key.
+        const sub = text.substring(0, keyIndex);
+        const realStart = sub.lastIndexOf('{');
+        if (realStart !== -1) {
+            // Find the last '}'
+            const realEnd = text.lastIndexOf('}');
+            if (realEnd > realStart) {
+                return text.substring(realStart, realEnd + 1);
+            }
+        }
+    }
+  }
+
+  // 3. Fallback: Naive brace extraction (first { to last })
+  // This is risky if LaTeX is present before the JSON, so we do it last
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+       return text.substring(firstBrace, lastBrace + 1);
+  }
+
+  return text; 
+};
+
 export const solveQuery = async (
   query: string, 
   mode: ModelMode = 'pro',
   imageBase64?: string,
-  audioBase64?: string
+  audioBase64?: string,
+  context?: { previousQuery: string; previousResult: string }
 ): Promise<SolverResponse> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
@@ -105,6 +146,11 @@ export const solveQuery = async (
         - For standard algebra/calculus, "nerdamer" is preferred.
         - For SPECIALIZED functions: **Hilbert Matrix** ('hilbert'), **Legendre Polynomials** ('legendre'), **Bessel functions** ('bessel'), **Hermite polynomials** ('hermite'), **Chebyshev polynomials** ('chebyshev'), **Laguerre polynomials** ('laguerre'), and **Circular** matrices ('circlular'), YOU MUST PREFER 'algebrite'.
         - If you detect these functions, ensure you guide the symbolic solver preference accordingly if asked.
+    12. **Clarifications & Errors**: 
+        - If the query is unclear, ambiguous, or lacks details, you MUST still return a valid JSON object.
+        - Put your request for clarification in the 'result' field.
+        - Set 'interpretation' to "Clarification needed" or similar.
+        - Do NOT return plain text.
 
     SCHEMA:
     ${schemaDefinition}
@@ -119,6 +165,13 @@ export const solveQuery = async (
   try {
     // Construct contents (Text + Optional Image + Optional Audio)
     const parts: any[] = [];
+    
+    // Inject Context if available
+    if (context) {
+        parts.push({ 
+            text: `[CONTEXT FROM PREVIOUS TURN]\nUser Question: "${context.previousQuery}"\nAI Answer: "${context.previousResult}"\n\n[CURRENT QUESTION]\n` 
+        });
+    }
     
     // Add text part if present, or if it's purely audio we can add a prompt instruction
     if (query) {
@@ -167,20 +220,29 @@ export const solveQuery = async (
     let text = response.text;
     if (!text) throw new Error("No response received from Gemini.");
 
-    // Manual cleanup of potential markdown formatting since we aren't using strict JSON mode
-    text = text.trim();
-    if (text.startsWith("```json")) {
-      text = text.replace(/^```json\s*/, "").replace(/\s*```$/, "");
-    } else if (text.startsWith("```")) {
-      text = text.replace(/^```\s*/, "").replace(/\s*```$/, "");
-    }
+    // Extract JSON using robust logic looking for "interpretation" key
+    const jsonText = extractJSON(text, 'interpretation');
 
     let parsed: SolverResponse;
     try {
-      parsed = JSON.parse(text) as SolverResponse;
+      parsed = JSON.parse(jsonText) as SolverResponse;
     } catch (e) {
-      console.error("JSON Parse Error", text);
-      throw new Error("Failed to parse AI response. The model did not return valid JSON.");
+      console.warn("JSON Parse Failed on extracted text. Attempting fallback on raw response.");
+      // Fallback: If the model returned plain text (e.g. clarification request), 
+      // wrap it manually into our schema.
+      const raw = text.trim();
+      if (raw && !raw.startsWith('{')) {
+          parsed = {
+              interpretation: "System Message",
+              result: raw,
+              confidenceScore: 1.0,
+              sections: [],
+              suggestions: ["Refine Query", "Provide Details"]
+          };
+      } else {
+          console.error("JSON Parse Error", jsonText);
+          throw new Error("Failed to parse AI response. The model did not return valid JSON.");
+      }
     }
     
     // Extract grounding metadata (Sources)
@@ -288,14 +350,12 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
 
   let text = response.text || '';
   
+  // Use shared robust extraction for math commands too
+  // We look for "operation" key to find the start
+  const jsonText = extractJSON(text, 'operation');
+
   try {
-    // Regex to extract JSON object (handling conversational wrappers)
-    const jsonMatch = text.match(/{[\s\S]*}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]) as MathCommand;
-    } else {
-      throw new Error("No JSON found");
-    }
+    return JSON.parse(jsonText) as MathCommand;
   } catch (e) {
     console.error("Failed to parse math command JSON", text);
     // Fallback simple evaluate with raw query, though likely to fail in pure symbolic mode

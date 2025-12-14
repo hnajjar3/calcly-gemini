@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { ArrowRight, Sparkles, Cpu, Search, RefreshCw, Zap, Brain, Image as ImageIcon, Camera, X, Sun, Moon, Calculator as CalcIcon, Mic, Square, Sigma } from './components/icons';
 import { HistoryItem, ModelMode } from './types';
@@ -119,6 +118,8 @@ const App: React.FC = () => {
     ));
 
     try {
+      // For retry, we assume no prior context is explicitly re-injected unless it was stored, 
+      // but simpler to just retry the query itself.
       const response = await solveQuery(itemToRetry.query, itemToRetry.modelMode, itemToRetry.attachedImage, itemToRetry.audioBase64);
       setHistory(prev => prev.map(item => 
         item.id === id ? { ...item, loading: false, response } : item
@@ -130,7 +131,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSubmit = async (e?: React.FormEvent, overrideQuery?: string, audioBase64?: string) => {
+  const handleSubmit = async (e?: React.FormEvent, overrideQuery?: string, audioBase64?: string, contextItem?: HistoryItem) => {
     e?.preventDefault();
     const queryText = overrideQuery || query.trim();
     
@@ -158,7 +159,13 @@ const App: React.FC = () => {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
 
     try {
-      const response = await solveQuery(queryText, newItem.modelMode, newItem.attachedImage, newItem.audioBase64);
+      // Prepare Context
+      const context = (contextItem && contextItem.response) ? {
+         previousQuery: contextItem.query,
+         previousResult: contextItem.response.result
+      } : undefined;
+
+      const response = await solveQuery(queryText, newItem.modelMode, newItem.attachedImage, newItem.audioBase64, context);
       setHistory(prev => prev.map(item => 
         item.id === id ? { ...item, loading: false, response } : item
       ));
@@ -172,8 +179,8 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSuggestionClick = (suggestion: string) => {
-    handleSubmit(undefined, suggestion);
+  const handleSuggestionClick = (suggestion: string, parentItem: HistoryItem) => {
+    handleSubmit(undefined, suggestion, undefined, parentItem);
   };
 
   return (
@@ -259,7 +266,7 @@ const App: React.FC = () => {
               item={item} 
               isDarkMode={theme === 'dark'} 
               onRetry={handleRetry}
-              onSuggestionClick={handleSuggestionClick}
+              onSuggestionClick={(suggestion) => handleSuggestionClick(suggestion, item)}
             />
           ))}
           <div ref={bottomRef} />
