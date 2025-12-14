@@ -40,11 +40,17 @@ const handleGeminiError = (error: any): never => {
   console.error("Gemini API Error details:", error);
   
   let msg = error.message || error.toString();
+  
+  // Handle structured error objects coming directly from the API response
+  if (error.error && error.error.message) {
+      msg = error.error.message;
+  }
+
   const lowerMsg = msg.toLowerCase();
 
   // Handle Quota/Rate Limits (429)
   if (lowerMsg.includes('429') || lowerMsg.includes('quota') || lowerMsg.includes('resource_exhausted')) {
-    throw new Error("⚠️ API Usage Limit Exceeded. You may be using a free key with rate limits. Please wait a moment and try again.");
+    throw new Error("⚠️ Rate Limit Exceeded. You have hit the API quota. Please wait a moment and try again, or switch to 'Flash' mode for lower resource usage.");
   }
   
   // Handle Auth Errors (400/403)
@@ -204,7 +210,7 @@ export const solveQuery = async (
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
   // Prompt engineering to guide the model towards Wolfram-like behavior
-  const systemInstruction = `
+  let systemInstruction = `
     You are OmniSolver, an advanced computational intelligence engine similar to Wolfram Alpha.
     Your goal is to provide precise, structured, and factual answers.
     
@@ -229,6 +235,29 @@ export const solveQuery = async (
     SCHEMA:
     ${schemaDefinition}
   `;
+
+  // Inject specific instructions for Flash vs Pro to optimize output tokens and quality
+  if (mode === 'flash') {
+    systemInstruction += `
+    
+    [STRICT MODE: FLASH - EXTREME CONCISENESS]
+    1. **NO FILLER**: Output ONLY the answer. No "Here is the result", "Sure", or conversational text.
+    2. **LENGTH**: The 'result' MUST be less than 50 words unless it involves code or data.
+    3. **STRUCTURE**: Avoid complex 'sections'. Use 'sections' ONLY for Code Blocks or Tables. Put all text in 'result'.
+    4. **CHARTS**: Do NOT generate charts in Flash mode. Focus on text/data.
+    5. **INTERPRETATION**: Max 3-5 words.
+    6. **FORMATTING**: Use very simple Markdown. Avoid complex nested lists or formatting that breaks easily.
+    `;
+  } else {
+     systemInstruction += `
+     
+     [MODE: PRO INTELLIGENCE]
+     - Provide comprehensive, deep, and detailed explanations.
+     - Use multiple sections to cover different aspects of the query.
+     - Show your reasoning where applicable.
+     - Use charts and visualizations where helpful.
+     `;
+  }
 
   // Select model based on mode
   const modelName = mode === 'pro' ? 'gemini-3-pro-preview' : 'gemini-2.5-flash';
