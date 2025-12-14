@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowRight, Sparkles, Cpu, Search, RefreshCw, Zap, Brain, Image as ImageIcon, Camera, X, Sun, Moon, Calculator as CalcIcon, Mic, Square, Sigma } from './components/icons';
+import { ArrowRight, Sparkles, Cpu, Search, RefreshCw, Zap, Brain, Image as ImageIcon, Camera, X, Sun, Moon, Calculator as CalcIcon, Mic, Square, Sigma, Plus } from './components/icons';
 import { HistoryItem, ModelMode } from './types';
 import { solveQuery } from './services/geminiService';
 import { ResultCard } from './components/ResultCard';
@@ -61,6 +61,15 @@ const App: React.FC = () => {
   const clearImage = () => {
     setAttachedImage(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const resetApp = () => {
+    setHistory([]);
+    setQuery('');
+    setAttachedImage(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    setIsProcessing(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Audio Recording Logic
@@ -149,6 +158,13 @@ const App: React.FC = () => {
       audioBase64: audioBase64 || undefined
     };
 
+    // Auto-detect context: Use the most recent history item if no specific context was passed
+    // This enables natural follow-up conversation in the main chat input
+    let effectiveContext = contextItem;
+    if (!effectiveContext && history.length > 0 && !overrideQuery) {
+        effectiveContext = history[history.length - 1];
+    }
+
     setHistory(prev => [...prev, newItem]);
     setQuery('');
     setAttachedImage(null);
@@ -160,9 +176,9 @@ const App: React.FC = () => {
 
     try {
       // Prepare Context
-      const context = (contextItem && contextItem.response) ? {
-         previousQuery: contextItem.query,
-         previousResult: contextItem.response.result
+      const context = (effectiveContext && effectiveContext.response) ? {
+         previousQuery: effectiveContext.query,
+         previousResult: effectiveContext.response.result
       } : undefined;
 
       const response = await solveQuery(queryText, newItem.modelMode, newItem.attachedImage, newItem.audioBase64, context);
@@ -188,14 +204,18 @@ const App: React.FC = () => {
       
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 z-50 flex items-center px-4 sm:px-8 justify-between transition-colors">
-        <div className="flex items-center space-x-2">
+        <button 
+          onClick={resetApp}
+          className="flex items-center space-x-2 hover:opacity-80 transition-opacity focus:outline-none"
+          title="Reset to Home"
+        >
           <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
             <Cpu className="w-5 h-5" />
           </div>
           <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-700 to-violet-700 dark:from-indigo-400 dark:to-violet-400">
             {APP_NAME}
           </span>
-        </div>
+        </button>
         <div className="flex items-center space-x-4">
           <div className="hidden sm:flex items-center text-sm text-slate-500 dark:text-slate-400 space-x-4">
               <span className="flex items-center"><Sparkles className="w-3 h-3 mr-1 text-amber-500" /> Pro Intelligence</span>
@@ -279,21 +299,33 @@ const App: React.FC = () => {
         <div className="max-w-3xl mx-auto w-full">
           {/* Controls Bar */}
           <div className="flex justify-between items-end mb-2 px-1">
-             <div className="flex space-x-1 bg-white dark:bg-slate-800 p-1 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm">
-                <button 
-                  onClick={() => setModelMode('pro')}
-                  className={`flex items-center space-x-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${modelMode === 'pro' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
-                >
-                  <Brain className="w-3.5 h-3.5" />
-                  <span>Pro Reason</span>
-                </button>
-                <button 
-                  onClick={() => setModelMode('flash')}
-                  className={`flex items-center space-x-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${modelMode === 'flash' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
-                >
-                  <Zap className="w-3.5 h-3.5" />
-                  <span>Flash Fast</span>
-                </button>
+             <div className="flex items-center space-x-2">
+                 {history.length > 0 && (
+                    <button 
+                        onClick={resetApp} 
+                        className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-900/50 shadow-sm transition-all animate-fade-in"
+                        title="Start a new conversation topic"
+                    >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>New Topic</span>
+                    </button>
+                 )}
+                 <div className="flex space-x-1 bg-white dark:bg-slate-800 p-1 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <button 
+                      onClick={() => setModelMode('pro')}
+                      className={`flex items-center space-x-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${modelMode === 'pro' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+                    >
+                      <Brain className="w-3.5 h-3.5" />
+                      <span>Pro Reason</span>
+                    </button>
+                    <button 
+                      onClick={() => setModelMode('flash')}
+                      className={`flex items-center space-x-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${modelMode === 'flash' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      <span>Flash Fast</span>
+                    </button>
+                 </div>
              </div>
              
              {/* Image Preview if attached */}
@@ -335,7 +367,7 @@ const App: React.FC = () => {
                   type="text"
                   value={isRecording ? "Listening..." : query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder={modelMode === 'pro' ? "Ask complex questions (Math, Physics, Data)..." : "Ask quick questions..."}
+                  placeholder={history.length > 0 ? "Ask a follow-up question..." : (modelMode === 'pro' ? "Ask complex questions (Math, Physics, Data)..." : "Ask quick questions...")}
                   className={`w-full h-16 px-4 bg-transparent text-lg ${isRecording ? 'text-red-500 font-medium animate-pulse' : 'text-slate-900 dark:text-slate-100'} placeholder:text-slate-400 focus:outline-none`}
                   disabled={isProcessing || isRecording}
                 />

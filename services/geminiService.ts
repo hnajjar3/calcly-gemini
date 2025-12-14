@@ -134,19 +134,22 @@ export const solveQuery = async (
     5.  **Accuracy**: Use the googleSearch tool if the query requires up-to-date information or specific facts.
     6.  **Format**: Return ONLY valid raw JSON matching the schema below. DO NOT wrap the JSON in markdown code blocks.
     7.  **Math**: Use LaTeX formatting for all mathematical expressions. Wrap inline math in single dollar signs ($...$) and block math in double dollar signs ($$...$$).
-    8.  **Code**: If code is requested or relevant, put it in a separate section with type "code". Do not mix code blocks inside "text" sections if possible.
-    9.  **Multimodal**: 
+    8.  **JSON & Escaping**: You are outputting a JSON string. **ALL backslashes in LaTeX must be double-escaped**. 
+        - Incorrect: "\\approx", "\\theta", "\\frac"
+        - Correct: "\\\\approx", "\\\\theta", "\\\\frac"
+    9.  **Code**: If code is requested or relevant, put it in a separate section with type "code". Do not mix code blocks inside "text" sections if possible.
+    10. **Multimodal**: 
         - If an image is provided, analyze it thoroughly.
         - If AUDIO is provided, listen to the speech carefully, interpret the problem described, and solve it.
-    10. **Suggestions**: Generate 3-5 "smart actions" or follow-up questions. 
+    11. **Suggestions**: Generate 3-5 "smart actions" or follow-up questions. 
         - If Math: "Solve for x", "Graph it", "Show derivative", "Step-by-step".
         - If Data: "Compare with [Related]", "Show history", "Visualize".
         - General: "Explain simply", "More details", "Translate to Spanish".
-    11. **Symbolic Engine Selection**:
+    12. **Symbolic Engine Selection**:
         - For standard algebra/calculus, "nerdamer" is preferred.
         - For SPECIALIZED functions: **Hilbert Matrix** ('hilbert'), **Legendre Polynomials** ('legendre'), **Bessel functions** ('bessel'), **Hermite polynomials** ('hermite'), **Chebyshev polynomials** ('chebyshev'), **Laguerre polynomials** ('laguerre'), and **Circular** matrices ('circlular'), YOU MUST PREFER 'algebrite'.
         - If you detect these functions, ensure you guide the symbolic solver preference accordingly if asked.
-    12. **Clarifications & Errors**: 
+    13. **Clarifications & Errors**: 
         - If the query is unclear, ambiguous, or lacks details, you MUST still return a valid JSON object.
         - Put your request for clarification in the 'result' field.
         - Set 'interpretation' to "Clarification needed" or similar.
@@ -227,21 +230,32 @@ export const solveQuery = async (
     try {
       parsed = JSON.parse(jsonText) as SolverResponse;
     } catch (e) {
-      console.warn("JSON Parse Failed on extracted text. Attempting fallback on raw response.");
-      // Fallback: If the model returned plain text (e.g. clarification request), 
-      // wrap it manually into our schema.
-      const raw = text.trim();
-      if (raw && !raw.startsWith('{')) {
-          parsed = {
-              interpretation: "System Message",
-              result: raw,
-              confidenceScore: 1.0,
-              sections: [],
-              suggestions: ["Refine Query", "Provide Details"]
-          };
-      } else {
-          console.error("JSON Parse Error", jsonText);
-          throw new Error("Failed to parse AI response. The model did not return valid JSON.");
+      // JSON Parse Failed. This is common with LLMs generating LaTeX inside JSON strings 
+      // where they use single backslashes (e.g. \approx) which are invalid JSON escape sequences.
+      // We attempt to repair the string by escaping invalid backslashes.
+      try {
+        // Regex: Match a backslash that is NOT followed by a valid escape char (", \, /, b, f, n, r, t, or uXXXX)
+        // We replace it with double backslash.
+        const repaired = jsonText.replace(/\\(?!(["\\/bfnrt]|u[0-9a-fA-F]{4}))/g, "\\\\");
+        parsed = JSON.parse(repaired) as SolverResponse;
+        console.warn("Original JSON parse failed, but repair was successful.");
+      } catch (repairError) {
+        console.warn("JSON Parse Failed on extracted text. Attempting fallback on raw response.");
+        // Fallback: If the model returned plain text (e.g. clarification request), 
+        // wrap it manually into our schema.
+        const raw = text.trim();
+        if (raw && !raw.startsWith('{')) {
+            parsed = {
+                interpretation: "System Message",
+                result: raw,
+                confidenceScore: 1.0,
+                sections: [],
+                suggestions: ["Refine Query", "Provide Details"]
+            };
+        } else {
+            console.error("JSON Parse Error", jsonText);
+            throw new Error("Failed to parse AI response. The model did not return valid JSON.");
+        }
       }
     }
     

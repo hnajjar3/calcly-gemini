@@ -30,7 +30,8 @@ import {
   CheckCircle2,
   Equal,
   ExternalLink,
-  Lightbulb
+  Lightbulb,
+  Plus
 } from 'lucide-react';
 
 export { 
@@ -63,5 +64,6 @@ export {
   CheckCircle2,
   Equal,
   ExternalLink,
-  Lightbulb
+  Lightbulb,
+  Plus
 };

@@ -111,6 +111,45 @@
         margin-top: 1em;
         margin-bottom: 0.5em;
       }
+      
+      /* Markdown Table Styles */
+      .markdown-content table {
+        display: block;
+        width: 100%;
+        overflow-x: auto;
+        border-collapse: collapse;
+        margin: 1em 0;
+        border-radius: 0.5rem;
+        border-style: hidden; /* hide standard table border to use shadow/rounded */
+      }
+      .markdown-content th, 
+      .markdown-content td {
+        padding: 0.75em 1em;
+        border: 1px solid #e2e8f0;
+        text-align: left;
+      }
+      .dark .markdown-content th, 
+      .dark .markdown-content td {
+        border-color: #334155;
+      }
+      .markdown-content th {
+        background-color: #f8fafc;
+        font-weight: 600;
+        font-size: 0.85em;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #64748b;
+      }
+      .dark .markdown-content th {
+        background-color: #1e293b;
+        color: #94a3b8;
+      }
+      .markdown-content tr:nth-child(even) {
+        background-color: #fcfcfc;
+      }
+      .dark .markdown-content tr:nth-child(even) {
+        background-color: #0f172a; /* very subtle stripe */
+      }
     </style>
 <script type="importmap">
 {

@@ -40,9 +40,9 @@ export const ChartVisualization: React.FC<Props> = ({ config, isDarkMode }) => {
     borderRadius: '12px',
     boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
     backdropFilter: 'blur(8px)',
-    padding: '10px 14px',
+    padding: '8px 12px',
     color: isDarkMode ? '#f1f5f9' : '#1e293b',
-    fontSize: '12px',
+    fontSize: '11px',
     fontWeight: 600,
     outline: 'none'
   };
@@ -79,7 +79,7 @@ export const ChartVisualization: React.FC<Props> = ({ config, isDarkMode }) => {
   );
 
   const axisStyle = {
-     tick: { fontSize: 11, fill: tickColor, fontWeight: 500, fontFamily: 'inherit' },
+     tick: { fontSize: 10, fill: tickColor, fontWeight: 500, fontFamily: 'inherit' },
      tickLine: false,
      axisLine: { stroke: gridColor, strokeWidth: 1, strokeOpacity: 0.5 },
      tickMargin: 8
@@ -100,7 +100,7 @@ export const ChartVisualization: React.FC<Props> = ({ config, isDarkMode }) => {
                 cursor={{ fill: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }}
             />
             <Legend 
-                wrapperStyle={{ paddingTop: '20px', fontSize: '12px', fontWeight: 500, opacity: 0.8 }} 
+                wrapperStyle={{ paddingTop: '16px', fontSize: '11px', fontWeight: 500, opacity: 0.8 }} 
                 iconType="circle"
             />
             {config.seriesKeys.map((key, index) => {
@@ -126,7 +126,7 @@ export const ChartVisualization: React.FC<Props> = ({ config, isDarkMode }) => {
             <XAxis dataKey="x" {...axisStyle} />
             <YAxis {...axisStyle} />
             <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: isDarkMode ? '#e2e8f0' : '#1e293b', paddingBottom: 2 }} />
-            <Legend wrapperStyle={{ paddingTop: '20px', fontSize: '12px', fontWeight: 500, opacity: 0.8 }} iconType="circle"/>
+            <Legend wrapperStyle={{ paddingTop: '16px', fontSize: '11px', fontWeight: 500, opacity: 0.8 }} iconType="circle"/>
             {config.seriesKeys.map((key, index) => {
               const theme = THEME_COLORS[index % THEME_COLORS.length];
               return (
@@ -154,7 +154,7 @@ export const ChartVisualization: React.FC<Props> = ({ config, isDarkMode }) => {
             <XAxis dataKey="x" {...axisStyle} />
             <YAxis {...axisStyle} />
             <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: isDarkMode ? '#e2e8f0' : '#1e293b', paddingBottom: 2 }} />
-            <Legend wrapperStyle={{ paddingTop: '20px', fontSize: '12px', fontWeight: 500, opacity: 0.8 }} iconType="circle"/>
+            <Legend wrapperStyle={{ paddingTop: '16px', fontSize: '11px', fontWeight: 500, opacity: 0.8 }} iconType="circle"/>
             {config.seriesKeys.map((key, index) => {
               const theme = THEME_COLORS[index % THEME_COLORS.length];
               return (
@@ -164,8 +164,8 @@ export const ChartVisualization: React.FC<Props> = ({ config, isDarkMode }) => {
                   dataKey={key} 
                   stroke={theme.main} 
                   strokeWidth={0}
-                  dot={{ r: 5, fill: theme.main, strokeWidth: 2, stroke: isDarkMode ? '#1e293b' : '#fff' }}
-                  activeDot={{ r: 8, filter: "url(#lineShadow)", strokeWidth: 0 }}
+                  dot={{ r: 4, fill: theme.main, strokeWidth: 2, stroke: isDarkMode ? '#1e293b' : '#fff' }}
+                  activeDot={{ r: 6, filter: "url(#lineShadow)", strokeWidth: 0 }}
                   animationDuration={1500}
                   animationEasing="ease-out"
                 />
@@ -183,7 +183,7 @@ export const ChartVisualization: React.FC<Props> = ({ config, isDarkMode }) => {
             <XAxis dataKey="x" {...axisStyle} />
             <YAxis {...axisStyle} />
             <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: isDarkMode ? '#e2e8f0' : '#1e293b', paddingBottom: 2 }} />
-            <Legend wrapperStyle={{ paddingTop: '20px', fontSize: '12px', fontWeight: 500, opacity: 0.8 }} iconType="circle"/>
+            <Legend wrapperStyle={{ paddingTop: '16px', fontSize: '11px', fontWeight: 500, opacity: 0.8 }} iconType="circle"/>
             {config.seriesKeys.map((key, index) => {
               const theme = THEME_COLORS[index % THEME_COLORS.length];
               return (
@@ -194,7 +194,7 @@ export const ChartVisualization: React.FC<Props> = ({ config, isDarkMode }) => {
                   stroke={theme.main} 
                   strokeWidth={3}
                   dot={{ r: 0, fill: theme.main, strokeWidth: 0 }} 
-                  activeDot={{ r: 6, fill: theme.main, stroke: isDarkMode ? '#1e293b' : '#fff', strokeWidth: 2 }}
+                  activeDot={{ r: 5, fill: theme.main, stroke: isDarkMode ? '#1e293b' : '#fff', strokeWidth: 2 }}
                   filter="url(#lineShadow)"
                   animationDuration={1500}
                   animationEasing="ease-out"
@@ -207,19 +207,19 @@ export const ChartVisualization: React.FC<Props> = ({ config, isDarkMode }) => {
   };
 
   return (
-    <div className="w-full h-80 sm:h-[420px] bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 mt-6 shadow-sm dark:shadow-black/20 transition-all duration-300 hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 group">
-      <div className="flex items-center justify-between mb-8 pl-1">
+    <div className="w-full h-64 sm:h-80 bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 mt-4 shadow-sm dark:shadow-black/20 transition-all duration-300 hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 group">
+      <div className="flex items-center justify-between mb-4 pl-1">
         <div>
-          <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-widest flex items-center gap-2">
+          <h3 className="text-[10px] font-bold text-slate-800 dark:text-slate-100 uppercase tracking-widest flex items-center gap-2">
             {config.title}
           </h3>
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5 font-semibold tracking-wide uppercase">
+          <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-1 font-semibold tracking-wide uppercase">
             {config.xLabel} <span className="text-slate-300 dark:text-slate-600 mx-1">/</span> {config.yLabel}
           </p>
         </div>
       </div>
       
-      <div className="w-full h-full pb-8 pr-2">
+      <div className="w-full h-full pb-6 pr-2">
          <ResponsiveContainer width="100%" height="100%">
            {renderChart()}
          </ResponsiveContainer>
