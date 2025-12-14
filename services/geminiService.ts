@@ -35,6 +35,47 @@ const getApiKey = (): string => {
   return DEMO_API_KEY;
 };
 
+// Centralized Error Handler
+const handleGeminiError = (error: any): never => {
+  console.error("Gemini API Error details:", error);
+  
+  let msg = error.message || error.toString();
+  const lowerMsg = msg.toLowerCase();
+
+  // Handle Quota/Rate Limits (429)
+  if (lowerMsg.includes('429') || lowerMsg.includes('quota') || lowerMsg.includes('resource_exhausted')) {
+    throw new Error("⚠️ API Usage Limit Exceeded. You may be using a free key with rate limits. Please wait a moment and try again.");
+  }
+  
+  // Handle Auth Errors (400/403)
+  if (lowerMsg.includes('api_key') || lowerMsg.includes('403') || lowerMsg.includes('key not valid')) {
+    throw new Error("⚠️ Invalid API Key. Please check your .env configuration.");
+  }
+
+  // Handle Server Errors (500/503)
+  if (lowerMsg.includes('503') || lowerMsg.includes('overloaded') || lowerMsg.includes('internal')) {
+    throw new Error("⚠️ AI Service Overloaded. Please try again in a few seconds.");
+  }
+  
+  // Filter out raw JSON if possible to make it readable
+  if (msg.includes('{')) {
+      try {
+          // Attempt to extract message from JSON string if present
+          const jsonMatch = msg.match(/\{.*\}/);
+          if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]);
+              if (parsed.error && parsed.error.message) {
+                  msg = parsed.error.message;
+              }
+          }
+      } catch (e) {
+          // ignore parse error
+      }
+  }
+
+  throw new Error(msg || "An unexpected error occurred connecting to AI.");
+};
+
 // Define the schema definition string for the prompt since we can't pass the object to config when using tools
 const schemaDefinition = `
 {
@@ -292,8 +333,7 @@ export const solveQuery = async (
 
     return parsed;
   } catch (error) {
-    console.error("Gemini API Error:", error);
-    throw error;
+    handleGeminiError(error);
   }
 };
 
@@ -323,36 +363,42 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
     }
   `;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: { parts: [{ text: query }] },
-    config: {
-      systemInstruction: systemInstruction,
-      thinkingConfig: { thinkingBudget: 0 },
-      responseMimeType: 'application/json'
-    }
-  });
-
-  const jsonText = extractJSON(response.text || '', 'operation');
-
   try {
-    const parsed = JSON.parse(jsonText);
-    
-    // Normalization Layer: Ensure expression is a string
-    if (parsed.matrix && !parsed.expression) {
-        parsed.expression = typeof parsed.matrix === 'string' ? parsed.matrix : JSON.stringify(parsed.matrix);
-    }
-    
-    if (parsed.expression && typeof parsed.expression !== 'string') {
-        parsed.expression = JSON.stringify(parsed.expression);
-    }
-    
-    if (!parsed.expression) {
-         parsed.expression = query;
-    }
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: { parts: [{ text: query }] },
+      config: {
+        systemInstruction: systemInstruction,
+        thinkingConfig: { thinkingBudget: 0 },
+        responseMimeType: 'application/json'
+      }
+    });
 
-    return parsed as MathCommand;
-  } catch (e) {
+    const jsonText = extractJSON(response.text || '', 'operation');
+
+    try {
+      const parsed = JSON.parse(jsonText);
+      
+      // Normalization Layer: Ensure expression is a string
+      if (parsed.matrix && !parsed.expression) {
+          parsed.expression = typeof parsed.matrix === 'string' ? parsed.matrix : JSON.stringify(parsed.matrix);
+      }
+      
+      if (parsed.expression && typeof parsed.expression !== 'string') {
+          parsed.expression = JSON.stringify(parsed.expression);
+      }
+      
+      if (!parsed.expression) {
+           parsed.expression = query;
+      }
+
+      return parsed as MathCommand;
+    } catch (e) {
+      return { operation: 'evaluate', expression: query, preferredEngine: 'nerdamer' };
+    }
+  } catch (error) {
+    // If parsing fails due to API error, fall back to simple evaluation
+    console.warn("Parse API failed, falling back to local eval:", error);
     return { operation: 'evaluate', expression: query, preferredEngine: 'nerdamer' };
   }
 };
@@ -365,22 +411,27 @@ export const parseNumericalExpression = async (query: string): Promise<string> =
     OUTPUT JSON SCHEMA: { "expression": "string" }
   `;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: { parts: [{ text: query }] },
-    config: {
-      systemInstruction: systemInstruction,
-      thinkingConfig: { thinkingBudget: 0 },
-      responseMimeType: 'application/json'
-    }
-  });
-
-  const jsonText = extractJSON(response.text || '', 'expression');
-
   try {
-    const parsed = JSON.parse(jsonText);
-    return parsed.expression || query;
-  } catch (e) {
-    return query; 
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: { parts: [{ text: query }] },
+      config: {
+        systemInstruction: systemInstruction,
+        thinkingConfig: { thinkingBudget: 0 },
+        responseMimeType: 'application/json'
+      }
+    });
+
+    const jsonText = extractJSON(response.text || '', 'expression');
+
+    try {
+      const parsed = JSON.parse(jsonText);
+      return parsed.expression || query;
+    } catch (e) {
+      return query; 
+    }
+  } catch (error) {
+    console.warn("Numerical parsing API failed, falling back to raw input:", error);
+    return query;
   }
 };

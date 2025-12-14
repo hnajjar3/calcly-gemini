@@ -1,9 +1,9 @@
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { HistoryItem, ResultPart, Section, TableData } from '../types';
 import { ChartVisualization } from './ChartVisualization';
 import { LatexRenderer, splitLatex } from './LatexRenderer';
-import { Copy, Sparkles, AlertTriangle, Zap, Brain, Image as ImageIcon, ExternalLink, RefreshCw, ArrowRight, Lightbulb, Mic, Volume2 } from '../components/icons';
+import { Copy, Sparkles, AlertTriangle, Zap, Brain, Image as ImageIcon, ExternalLink, RefreshCw, ArrowRight, Lightbulb, Mic, Volume2, Check } from '../components/icons';
 
 // Access global KaTeX, Prism, and Marked loaded via script tags
 declare const katex: any;
@@ -30,6 +30,7 @@ const detectLanguage = (content: string, title?: string): string => {
 // Code Block Component
 const CodeBlock: React.FC<{ code: string; language?: string }> = ({ code, language = 'javascript' }) => {
   const codeRef = useRef<HTMLElement>(null);
+  const [isCopied, setIsCopied] = useState(false);
 
   useEffect(() => {
     if (codeRef.current && typeof Prism !== 'undefined') {
@@ -37,15 +38,22 @@ const CodeBlock: React.FC<{ code: string; language?: string }> = ({ code, langua
     }
   }, [code, language]);
 
+  const handleCopy = () => {
+    if (!code) return;
+    navigator.clipboard.writeText(code);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
+
   return (
     <div className="relative group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-[#2d2d2d] my-2 shadow-sm w-full">
       <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
         <button 
-           onClick={() => navigator.clipboard.writeText(code)}
+           onClick={handleCopy}
            className="p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-md backdrop-blur-sm transition-colors"
            title="Copy Code"
         >
-          <Copy className="w-3 h-3" />
+          {isCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
         </button>
       </div>
       <pre className={`!m-0 !p-3 overflow-x-auto text-xs sm:text-sm scrollbar-thin scrollbar-thumb-slate-600`}>
@@ -145,7 +153,8 @@ const TableSection: React.FC<{ data: TableData }> = ({ data }) => {
 };
 
 export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSuggestionClick }) => {
-  
+  const [isCopied, setIsCopied] = useState(false);
+
   if (item.loading) {
     return (
       <div className="w-full max-w-3xl mx-auto bg-white/80 dark:bg-slate-800/80 backdrop-blur-md rounded-2xl p-6 shadow-lg border border-slate-200 dark:border-slate-700/50 animate-pulse">
@@ -184,6 +193,13 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSugge
 
   const { response } = item;
   if (!response) return null;
+
+  const handleCopy = () => {
+    const text = response.result.map(r => r.content).join('\n');
+    navigator.clipboard.writeText(text);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
 
   return (
     <div className="w-full max-w-3xl mx-auto bg-white/90 dark:bg-slate-800/90 backdrop-blur-xl rounded-2xl shadow-xl shadow-indigo-500/5 dark:shadow-black/20 border border-slate-200 dark:border-slate-700 overflow-hidden transition-all duration-300 animate-fade-in-up">
@@ -226,11 +242,20 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSugge
                 Listen
              </button>
              <button 
-                onClick={() => navigator.clipboard.writeText(response.result.map(r => r.content).join(' '))}
+                onClick={handleCopy}
                 className="flex items-center hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
              >
-                <Copy className="w-3.5 h-3.5 mr-1.5" />
-                Copy
+                {isCopied ? (
+                    <>
+                        <Check className="w-3.5 h-3.5 mr-1.5 text-emerald-500" />
+                        <span className="text-emerald-500">Copied</span>
+                    </>
+                ) : (
+                    <>
+                        <Copy className="w-3.5 h-3.5 mr-1.5" />
+                        Copy
+                    </>
+                )}
              </button>
          </div>
       </div>
