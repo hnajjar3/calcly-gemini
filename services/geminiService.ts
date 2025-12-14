@@ -9,20 +9,26 @@ declare global {
   }
 }
 
+// DEMO KEY for Open Source usage (Fallback)
+// NOTE: This is a placeholder. For the app to function correctly, 
+// you must provide a valid API key in your .env file or build environment.
+const DEMO_API_KEY = "AIzaSy_DEMO_KEY_PLACEHOLDER_CHANGE_ME"; 
+
 // Helper to ensure API key presence
 // In our setup:
 // 1. Local Dev: injected via vite transformIndexHtml into window.env
 // 2. Production: injected via server.js replacement into window.env
+// 3. Fallback: Uses DEMO_API_KEY if env var is missing
 const getApiKey = (): string => {
-  const key = (typeof window !== 'undefined' && window.env && window.env.API_KEY) 
+  const envKey = (typeof window !== 'undefined' && window.env && window.env.API_KEY) 
               ? window.env.API_KEY 
-              : process.env.API_KEY; // Fallback
+              : process.env.API_KEY;
 
-  if (!key) {
-    console.error("API_KEY is missing. Ensure it is set in .env (local) or Cloud Run Environment Variables (prod).");
-    throw new Error("API Key not found. Please check your configuration.");
+  if (!envKey) {
+    console.warn("API_KEY not found in environment. Falling back to DEMO_API_KEY. Functionality may be limited.");
+    return DEMO_API_KEY;
   }
-  return key;
+  return envKey;
 };
 
 // Define the schema definition string for the prompt since we can't pass the object to config when using tools

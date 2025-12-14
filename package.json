@@ -1,8 +1,10 @@
 {
   "name": "calcly",
-  "private": true,
   "version": "1.0.0",
+  "description": "Open Source AI Computational Engine powered by Gemini",
   "type": "module",
+  "license": "MIT",
+  "private": false,
   "scripts": {
     "dev": "vite",
     "build": "vite build",

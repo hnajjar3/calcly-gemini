@@ -1,6 +1,6 @@
-# Calcly - AI Computational Engine
+# Calcly - Open Source AI Computational Engine
 
-Calcly is an AI-powered computational knowledge engine inspired by Wolfram Alpha. It leverages Google's Gemini models to solve complex math, physics, coding, and general knowledge queries, complete with symbolic computation and data visualizations.
+Calcly is an **open-source**, AI-powered computational knowledge engine inspired by Wolfram Alpha. It leverages Google's Gemini models to solve complex math, physics, coding, and general knowledge queries, complete with symbolic computation and data visualizations.
 
 ## Features
 
@@ -9,6 +9,7 @@ Calcly is an AI-powered computational knowledge engine inspired by Wolfram Alpha
 - **Data Visualization**: Auto-generated interactive charts for statistical data.
 - **Multimodal Input**: Support for image analysis and voice queries.
 - **Dual Mode**: Switch between **Pro** (Reasoning, Gemini 3) and **Flash** (Speed, Gemini 2.5).
+- **Open Source**: Now available for the community to explore and extend.
 
 ---
 
@@ -38,6 +39,10 @@ You need a Google Gemini API Key to run this application.
 ```env
 API_KEY=your_gemini_api_key_starts_with_AIza...
 ```
+
+**Demo Mode Fallback**: 
+If you do not provide an `.env` file, the application is configured to run in **Demo Mode** using a placeholder key found in `services/geminiService.ts`. 
+*Note: The default demo key is a placeholder (`AIzaSy_DEMO_KEY_PLACEHOLDER...`). You must replace it with a valid key for the app to function correctly.*
 
 > **Security Note**: The `.env` file is git-ignored to prevent leaking your key. Do not commit it to version control.
 
