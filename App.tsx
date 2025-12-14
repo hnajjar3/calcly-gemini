@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowRight, Sparkles, Cpu, Search, RefreshCw, Zap, Brain, Image as ImageIcon, Camera, X, Sun, Moon, Calculator as CalcIcon, Mic, Square, Sigma, Plus, Nu } from './components/icons';
+import { ArrowRight, Sparkles, Cpu, Search, RefreshCw, Zap, Brain, Image as ImageIcon, Camera, X, Sun, Moon, Calculator as CalcIcon, Mic, Square, Sigma, Plus, Nu, TrendingUp, Code, Globe, Music } from './components/icons';
 import { HistoryItem, ModelMode } from './types';
 import { solveQuery } from './services/geminiService';
 import { ResultCard } from './components/ResultCard';
@@ -76,7 +76,13 @@ const App: React.FC = () => {
     setIsProcessing(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     // Also clear URL params if present to clean state
-    window.history.replaceState({}, '', window.location.pathname);
+    try {
+        if (window.location.protocol !== 'blob:' && window.location.protocol !== 'data:') {
+            window.history.replaceState({}, '', window.location.pathname);
+        }
+    } catch (e) {
+        // Ignore security errors in restricted environments
+    }
   };
 
   // Audio Recording Logic
@@ -134,8 +140,6 @@ const App: React.FC = () => {
     ));
 
     try {
-      // For retry, we assume no prior context is explicitly re-injected unless it was stored, 
-      // but simpler to just retry the query itself.
       const response = await solveQuery(itemToRetry.query, itemToRetry.modelMode, itemToRetry.attachedImage, itemToRetry.audioBase64);
       setHistory(prev => prev.map(item => 
         item.id === id ? { ...item, loading: false, response } : item
@@ -165,8 +169,6 @@ const App: React.FC = () => {
       audioBase64: audioBase64 || undefined
     };
 
-    // Auto-detect context: Use the most recent history item if no specific context was passed
-    // This enables natural follow-up conversation in the main chat input
     let effectiveContext = contextItem;
     if (!effectiveContext && history.length > 0 && !overrideQuery) {
         effectiveContext = history[history.length - 1];
@@ -185,7 +187,6 @@ const App: React.FC = () => {
       // Prepare Context
       const context = (effectiveContext && effectiveContext.response) ? {
          previousQuery: effectiveContext.query,
-         // Fix: Convert result parts array to a single string for context
          previousResult: effectiveContext.response.result.map(p => p.content).join(' ')
       } : undefined;
 
@@ -209,62 +210,78 @@ const App: React.FC = () => {
 
   // Handle URL Query Params (Deep Linking)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const urlQuery = params.get('q');
-    
-    if (urlQuery && !hasAutoSubmitted.current) {
-        hasAutoSubmitted.current = true;
-        // Optionally allow mode selection via URL params as well
-        const modeParam = params.get('mode');
-        if (modeParam === 'flash') {
-            setModelMode('flash');
-        }
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const urlQuery = params.get('q');
         
-        // Slight delay to ensure hydration/state is ready
-        setTimeout(() => {
-            handleSubmit(undefined, urlQuery);
-        }, 100);
+        if (urlQuery && !hasAutoSubmitted.current) {
+            hasAutoSubmitted.current = true;
+            const modeParam = params.get('mode');
+            if (modeParam === 'flash') {
+                setModelMode('flash');
+            }
+            
+            setTimeout(() => {
+                handleSubmit(undefined, urlQuery);
+            }, 100);
+        }
+    } catch (e) {
+        // Ignore errors in restricted environments
     }
-    // We intentionally omit handleSubmit from deps to run this only once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const getIconForQuery = (q: string) => {
+    if (q.includes('Integrate') || q.includes('Solve')) return <Sigma className="w-4 h-4 text-indigo-500" />;
+    if (q.includes('Compare') || q.includes('GDP')) return <TrendingUp className="w-4 h-4 text-emerald-500" />;
+    if (q.includes('Graph') || q.includes('Plot')) return <TrendingUp className="w-4 h-4 text-blue-500" />;
+    if (q.includes('Code') || q.includes('complexity')) return <Code className="w-4 h-4 text-pink-500" />;
+    return <Search className="w-4 h-4 text-slate-400" />;
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col text-slate-900 dark:text-slate-100 font-sans transition-colors duration-300">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col text-slate-900 dark:text-slate-100 font-sans transition-colors duration-300 relative overflow-x-hidden">
       
+      {/* Background Ambience */}
+      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-indigo-500/10 rounded-full blur-[100px] animate-blob"></div>
+          <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-amber-500/10 rounded-full blur-[100px] animate-blob animation-delay-2000"></div>
+          <div className="absolute top-[30%] right-[30%] w-[30%] h-[30%] bg-emerald-500/10 rounded-full blur-[80px] animate-blob animation-delay-4000"></div>
+      </div>
+
       {/* Header */}
-      <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 z-50 flex items-center px-4 sm:px-8 justify-between transition-colors">
+      <header className="fixed top-0 left-0 right-0 h-16 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-800/60 z-50 flex items-center px-4 sm:px-8 justify-between transition-colors">
         <button 
           onClick={resetApp}
-          className="flex items-center space-x-2 hover:opacity-80 transition-opacity focus:outline-none"
+          className="flex items-center space-x-2 hover:opacity-80 transition-opacity focus:outline-none group"
           title="Reset to Home"
         >
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
+          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-indigo-500/30 group-hover:scale-105 transition-transform">
             <Cpu className="w-5 h-5" />
           </div>
           <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-700 to-violet-700 dark:from-indigo-400 dark:to-violet-400">
             {APP_NAME}
           </span>
         </button>
-        <div className="flex items-center space-x-4">
-          <div className="hidden sm:flex items-center text-sm text-slate-500 dark:text-slate-400 space-x-4">
-              <span className="flex items-center"><Sparkles className="w-3 h-3 mr-1 text-amber-500" /> Pro Intelligence</span>
-              <span className="flex items-center"><RefreshCw className="w-3 h-3 mr-1 text-emerald-500" /> Real-time Data</span>
+        <div className="flex items-center space-x-2 sm:space-x-4">
+          <div className="hidden sm:flex items-center text-xs font-medium text-slate-500 dark:text-slate-400 space-x-4 bg-slate-100/50 dark:bg-slate-800/50 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700/50">
+              <span className="flex items-center"><Sparkles className="w-3 h-3 mr-1.5 text-amber-500" /> Pro Intelligence</span>
+              <div className="w-px h-3 bg-slate-300 dark:bg-slate-600"></div>
+              <span className="flex items-center"><RefreshCw className="w-3 h-3 mr-1.5 text-emerald-500" /> Real-time Data</span>
           </div>
-          <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block"></div>
           
            <button
             onClick={() => setShowSymbolicSolver(true)}
-            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
-            title="Open Symbolic Solver (Exact Math)"
+            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors hidden sm:block"
+            title="Open Symbolic Solver"
           >
             <Sigma className="w-5 h-5" />
           </button>
           
            <button
             onClick={() => setShowNumericalSolver(true)}
-            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
-            title="Open Numerical Solver (Math.js)"
+            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors hidden sm:block"
+            title="Open Numerical Solver"
           >
             <Nu className="w-5 h-5" />
           </button>
@@ -272,7 +289,7 @@ const App: React.FC = () => {
           <button
             onClick={() => setShowCalculator(true)}
             className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
-            title="Open Basic Calculator"
+            title="Open Calculator"
           >
             <CalcIcon className="w-5 h-5" />
           </button>
@@ -287,29 +304,35 @@ const App: React.FC = () => {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-grow pt-24 pb-48 px-4 sm:px-6 w-full max-w-5xl mx-auto flex flex-col items-center">
+      <main className="flex-grow pt-24 pb-48 px-4 sm:px-6 w-full max-w-5xl mx-auto flex flex-col items-center relative z-10">
         
         {/* Welcome State */}
         {history.length === 0 && (
-          <div className="flex flex-col items-center justify-center min-h-[50vh] text-center space-y-8 animate-fade-in-up w-full">
-            <div className="space-y-4 max-w-2xl">
-              <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white tracking-tight">
-                What do you want to <span className="text-indigo-600 dark:text-indigo-400">know</span>?
+          <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-10 animate-fade-in-up w-full">
+            <div className="space-y-6 max-w-2xl">
+              <div className="inline-flex items-center px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 text-xs font-semibold tracking-wide uppercase mb-2">
+                 AI Computational Engine
+              </div>
+              <h1 className="text-4xl sm:text-6xl font-bold text-slate-900 dark:text-white tracking-tight leading-[1.1]">
+                What do you want to <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-500 dark:from-indigo-400 dark:to-violet-400">know?</span>
               </h1>
-              <p className="text-lg text-slate-600 dark:text-slate-400">
-                Compute answers, analyze data, and visualize concepts with Gemini Intelligence.
+              <p className="text-lg text-slate-600 dark:text-slate-400 max-w-lg mx-auto leading-relaxed">
+                Compute answers, analyze complex data, and visualize concepts with next-gen Gemini Intelligence.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-2xl text-left">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-3xl text-left">
               {SAMPLE_QUERIES.map((q, i) => (
                 <button
                   key={i}
                   onClick={() => handleSubmit(undefined, q)}
-                  className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 hover:shadow-md transition-all duration-200 text-sm text-slate-700 dark:text-slate-300 flex items-start group"
+                  className="p-4 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-indigo-300 dark:hover:border-indigo-500 hover:shadow-lg dark:hover:shadow-indigo-500/10 hover:-translate-y-0.5 transition-all duration-300 text-sm text-slate-700 dark:text-slate-300 flex items-center group"
                 >
-                  <Search className="w-4 h-4 mr-3 mt-0.5 text-slate-400 group-hover:text-indigo-500 dark:group-hover:text-indigo-400" />
-                  <span>{q}</span>
+                  <div className="p-2 bg-white dark:bg-slate-700 rounded-lg shadow-sm mr-3 group-hover:scale-110 transition-transform">
+                      {getIconForQuery(q)}
+                  </div>
+                  <span className="font-medium">{q}</span>
+                  <ArrowRight className="w-3.5 h-3.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity text-indigo-500" />
                 </button>
               ))}
             </div>
@@ -317,7 +340,7 @@ const App: React.FC = () => {
         )}
 
         {/* Results Feed */}
-        <div className="space-y-12 w-full">
+        <div className="space-y-8 w-full">
           {history.map((item) => (
             <ResultCard 
               key={item.id} 
@@ -333,46 +356,45 @@ const App: React.FC = () => {
       </main>
 
       {/* Sticky Footer Input */}
-      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent dark:from-slate-900 dark:via-slate-900 pt-4 pb-6 px-4 z-40 transition-colors">
+      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-slate-50 via-slate-50/90 to-transparent dark:from-slate-900 dark:via-slate-900/90 pt-8 pb-6 px-4 z-40">
         <div className="max-w-3xl mx-auto w-full">
           {/* Controls Bar */}
-          <div className="flex justify-between items-end mb-2 px-1">
+          <div className="flex justify-between items-end mb-3 px-1">
              <div className="flex items-center space-x-2">
                  {history.length > 0 && (
                     <button 
                         onClick={resetApp} 
                         className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-900/50 shadow-sm transition-all animate-fade-in"
-                        title="Start a new conversation topic"
                     >
                         <Plus className="w-3.5 h-3.5" />
                         <span>New Topic</span>
                     </button>
                  )}
-                 <div className="flex space-x-1 bg-white dark:bg-slate-800 p-1 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm">
+                 <div className="flex space-x-1 bg-white/80 dark:bg-slate-800/80 p-1 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-md">
                     <button 
                       onClick={() => setModelMode('pro')}
-                      className={`flex items-center space-x-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${modelMode === 'pro' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+                      className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${modelMode === 'pro' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
                     >
                       <Brain className="w-3.5 h-3.5" />
-                      <span>Pro Reason</span>
+                      <span>Pro</span>
                     </button>
                     <button 
                       onClick={() => setModelMode('flash')}
-                      className={`flex items-center space-x-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${modelMode === 'flash' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+                      className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${modelMode === 'flash' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
                     >
                       <Zap className="w-3.5 h-3.5" />
-                      <span>Flash Fast</span>
+                      <span>Flash</span>
                     </button>
                  </div>
              </div>
              
-             {/* Image Preview if attached */}
              {attachedImage && (
-               <div className="relative group">
-                 <img src={attachedImage} alt="Preview" className="h-16 w-16 object-cover rounded-lg border-2 border-white dark:border-slate-700 shadow-md" />
+               <div className="relative group animate-fade-in-up">
+                 <div className="absolute inset-0 bg-indigo-500 blur-md opacity-20 rounded-lg"></div>
+                 <img src={attachedImage} alt="Preview" className="h-14 w-14 object-cover rounded-lg border-2 border-white dark:border-slate-700 shadow-lg relative z-10" />
                  <button 
                    onClick={clearImage}
-                   className="absolute -top-2 -right-2 bg-slate-800 text-white p-0.5 rounded-full hover:bg-red-500 transition-colors"
+                   className="absolute -top-2 -right-2 z-20 bg-slate-800 text-white p-0.5 rounded-full hover:bg-red-500 transition-colors shadow-sm"
                  >
                    <X className="w-3 h-3" />
                  </button>
@@ -382,14 +404,14 @@ const App: React.FC = () => {
 
           <form 
             onSubmit={(e) => handleSubmit(e)} 
-            className={`relative group transition-all duration-300 ${isProcessing ? 'opacity-80 pointer-events-none' : ''}`}
+            className={`relative group transition-all duration-300 ${isProcessing ? 'opacity-90 pointer-events-none' : ''}`}
           >
-            <div className={`relative flex items-center bg-white dark:bg-slate-800 rounded-2xl border ${isRecording ? 'border-red-500 dark:border-red-500 ring-2 ring-red-500/20' : 'border-slate-300 dark:border-slate-600'} shadow-2xl shadow-indigo-500/10 dark:shadow-black/40 focus-within:ring-2 focus-within:ring-indigo-500/50 focus-within:border-indigo-500 transition-all overflow-hidden`}>
+            <div className={`relative flex items-center bg-white dark:bg-slate-800 rounded-2xl border ${isRecording ? 'border-red-500 dark:border-red-500 ring-4 ring-red-500/10' : 'border-slate-200 dark:border-slate-700'} shadow-xl shadow-indigo-500/5 dark:shadow-black/40 focus-within:ring-4 focus-within:ring-indigo-500/10 focus-within:border-indigo-500/50 transition-all overflow-hidden`}>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="pl-4 pr-3 py-4 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors border-r border-slate-100 dark:border-slate-700"
-                  title="Upload image for analysis"
+                  className="pl-4 pr-3 py-4 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors border-r border-slate-100 dark:border-slate-700/50"
+                  title="Upload image"
                 >
                   <Camera className="w-5 h-5" />
                 </button>
@@ -405,18 +427,16 @@ const App: React.FC = () => {
                   type="text"
                   value={isRecording ? "Listening..." : query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder={history.length > 0 ? "Ask a follow-up question..." : (modelMode === 'pro' ? "Ask complex questions (Math, Physics, Data)..." : "Ask quick questions...")}
+                  placeholder={history.length > 0 ? "Ask a follow-up..." : (modelMode === 'pro' ? "Ask complex questions..." : "Ask quick questions...")}
                   className={`w-full h-16 px-4 bg-transparent text-lg ${isRecording ? 'text-red-500 font-medium animate-pulse' : 'text-slate-900 dark:text-slate-100'} placeholder:text-slate-400 focus:outline-none`}
                   disabled={isProcessing || isRecording}
                 />
                 
-                <div className="flex items-center space-x-2 pr-3">
-                    {/* Recording Button */}
+                <div className="flex items-center space-x-2 pr-2">
                     <button
                         type="button"
                         onClick={isRecording ? stopRecording : startRecording}
-                        className={`aspect-square p-3 rounded-xl flex items-center justify-center transition-colors ${isRecording ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}
-                        title={isRecording ? "Stop Recording" : "Use Voice Input"}
+                        className={`aspect-square p-2.5 rounded-xl flex items-center justify-center transition-colors ${isRecording ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}
                     >
                         {isRecording ? <Square className="w-5 h-5 fill-current" /> : <Mic className="w-5 h-5" />}
                     </button>
@@ -424,7 +444,7 @@ const App: React.FC = () => {
                     <button
                     type="submit"
                     disabled={(!query.trim() && !attachedImage) || isProcessing || isRecording}
-                    className="aspect-square p-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white rounded-xl flex items-center justify-center transition-colors shadow-lg shadow-indigo-500/30"
+                    className="aspect-square p-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 text-white rounded-xl flex items-center justify-center transition-all shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
                     >
                     {isProcessing ? (
                         <RefreshCw className="w-5 h-5 animate-spin" />
@@ -435,9 +455,9 @@ const App: React.FC = () => {
                 </div>
             </div>
           </form>
-          <div className="text-center mt-2">
-            <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
-               {modelMode === 'pro' ? 'Gemini 3 Pro (High Reasoning)' : 'Gemini 2.5 Flash (High Speed)'} • {attachedImage ? 'Image Analysis Active' : isRecording ? 'Recording Voice...' : 'Text Input'}
+          <div className="text-center mt-3 flex items-center justify-center space-x-4 opacity-60 hover:opacity-100 transition-opacity">
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium uppercase tracking-wider">
+               {modelMode === 'pro' ? 'Gemini 3 Pro' : 'Gemini 2.5 Flash'} Active
             </p>
           </div>
         </div>
