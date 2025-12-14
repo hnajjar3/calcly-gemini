@@ -1,12 +1,25 @@
-
-import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { SolverResponse, ModelMode } from "../types";
 
+declare global {
+  interface Window {
+    env?: {
+      API_KEY?: string;
+    };
+  }
+}
+
 // Helper to ensure API key presence
+// In our setup:
+// 1. Local Dev: injected via vite transformIndexHtml into window.env
+// 2. Production: injected via server.js replacement into window.env
 const getApiKey = (): string => {
-  const key = process.env.API_KEY;
+  const key = (typeof window !== 'undefined' && window.env && window.env.API_KEY) 
+              ? window.env.API_KEY 
+              : process.env.API_KEY; // Fallback
+
   if (!key) {
-    console.error("API_KEY is missing from environment variables.");
+    console.error("API_KEY is missing. Ensure it is set in .env (local) or Cloud Run Environment Variables (prod).");
     throw new Error("API Key not found. Please check your configuration.");
   }
   return key;
@@ -88,6 +101,10 @@ export const solveQuery = async (
         - If Math: "Solve for x", "Graph it", "Show derivative", "Step-by-step".
         - If Data: "Compare with [Related]", "Show history", "Visualize".
         - General: "Explain simply", "More details", "Translate to Spanish".
+    11. **Symbolic Engine Selection**:
+        - For standard algebra/calculus, "nerdamer" is preferred.
+        - For SPECIALIZED functions: **Hilbert Matrix** ('hilbert'), **Legendre Polynomials** ('legendre'), **Bessel functions** ('bessel'), **Hermite polynomials** ('hermite'), **Chebyshev polynomials** ('chebyshev'), **Laguerre polynomials** ('laguerre'), and **Circular** matrices ('circlular'), YOU MUST PREFER 'algebrite'.
+        - If you detect these functions, ensure you guide the symbolic solver preference accordingly if asked.
 
     SCHEMA:
     ${schemaDefinition}
@@ -215,7 +232,7 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
   const systemInstruction = `
-    You are a math syntax parser. Your goal is to map natural language math queries into a specific structured JSON command object for a Computer Algebra System.
+    You are a math syntax parser. Your goal is to map natural language math queries into a specific structured JSON command object.
     
     Operations: 
     - "integrate" (definite and indefinite)
@@ -237,15 +254,14 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
       * CRITICAL: Do NOT include 'dx' or 'dt' in integrals. Just the integrand.
       * MATRICES: Return matrices in standard JS array format: [[1,2],[3,4]].
       * SYSTEMS: For multiple equations, separate them with commas (e.g., "x+y=1, x-y=2").
-      * ASSIGNMENTS: If user says "A = hilbert(3)", strip the assignment. Expression is just "hilbert(3)".
       * Example: "integrate sin(x) dx" -> expression: "sin(x)"
       * Example: "y = x^2 + 2" -> expression: "x^2 + 2"
     - variable: The independent variable(s) (e.g., "x", "n", or "x,y" for systems). Default to "x".
     - start: (Optional) Lower bound for integrals/sums, OR center point for Taylor series (default 0).
     - end: (Optional) Upper bound for integrals/sums, OR order/terms for Taylor series (default 4).
     - preferredEngine: (Optional) "nerdamer" or "algebrite".
-      * ALWAYS use "algebrite" for specialized functions: 'hilbert', 'legendre', 'bessel', 'circular' matrices, 'roots', 'factor', 'laguerre', 'hermite'.
-      * Use "nerdamer" for standard calculus: 'integrate', 'differentiate', 'solve' (linear systems), 'limit', 'determinant', 'invert'.
+      * ALWAYS use "algebrite" for: Specialized functions like 'hilbert', 'legendre', 'bessel', 'circular' matrices, 'roots', 'factor', 'hermite', 'chebyshev', 'laguerre'.
+      * Use "nerdamer" for: Standard 'integrate', 'differentiate', 'solve' (linear systems), 'limit', 'determinant', 'invert'.
       * If unsure, default to "nerdamer".
 
     Examples:
@@ -257,7 +273,6 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
     6. "Taylor series of cos(x) at 0" -> { "operation": "taylor", "expression": "cos(x)", "variable": "x", "start": "0", "end": "4", "preferredEngine": "nerdamer" }
     7. "Solve x+y=5, x-y=1" -> { "operation": "solve", "expression": "x+y=5, x-y=1", "variable": "x,y", "preferredEngine": "nerdamer" }
     8. "Hilbert matrix of size 3" -> { "operation": "evaluate", "expression": "hilbert(3)", "preferredEngine": "algebrite" }
-    9. "A = hilbert(3)" -> { "operation": "evaluate", "expression": "hilbert(3)", "preferredEngine": "algebrite" }
     
     Return ONLY valid raw JSON.
   `;

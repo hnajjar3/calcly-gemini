@@ -1,39 +1,34 @@
-import { defineConfig } from 'vitest/config';
-import { loadEnv } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
-import process from 'node:process';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
+  // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
   const env = loadEnv(mode, process.cwd(), '');
-  
+
   return {
     plugins: [
       react(),
       {
         name: 'html-env-injection',
         transformIndexHtml(html) {
-          // Inject the env variables into the HTML during local development
-          const envScript = `<script>window.env = ${JSON.stringify(env)};</script>`;
-          return html.replace('<!--ENV_INJECTION-->', envScript);
+          // During development (npm run dev), inject the key from .env file immediately
+          if (mode === 'development') {
+             const script = `<script>window.env = { API_KEY: "${env.API_KEY || ''}" };</script>`;
+             return html.replace('<!--ENV_INJECTION-->', script);
+          }
+          // During build/production, leave placeholder or inject empty default
+          // The server.js will handle the actual injection at runtime.
+          return html;
         }
       }
     ],
-    define: {
-      // Alias process.env to window.env globally (only map specific keys to avoid overwriting node internals)
-      'process.env.API_KEY': 'window.env.API_KEY',
-      'process.env.GEMINI_API_KEY': 'window.env.GEMINI_API_KEY'
-    },
+    // We remove the 'define' block because we are using window.env injection strategy
+    // which is safer for runtime variables in Docker containers
     build: {
       outDir: 'dist',
       emptyOutDir: true,
-    },
-    test: {
-      globals: true,
-      environment: 'jsdom',
-      setupFiles: './setupTests.ts',
-      css: true,
     }
   };
 });

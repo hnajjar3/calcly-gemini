@@ -4,8 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Calcly</title>
-    <!-- Placeholder for Runtime Environment Variables Injection -->
+    
+    <!-- Runtime Environment Injection Placeholder -->
+    <!-- This will be replaced by server.js in production -->
     <!--ENV_INJECTION-->
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -27,7 +30,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js"></script>
 
-    <!-- Nerdamer Symbolic Math Library (All plugins included) - Using UNPKG for reliability -->
+    <!-- Nerdamer Symbolic Math Library (All plugins included) - Using UNPKG Latest for maximum reliability -->
     <script defer src="https://unpkg.com/nerdamer@latest/all.min.js"></script>
     
     <!-- Algebrite Symbolic Math Library (Browser Bundle) -->
@@ -112,22 +115,18 @@
 <script type="importmap">
 {
   "imports": {
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
     "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
     "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
     "vite": "https://aistudiocdn.com/vite@^7.2.6",
     "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
-    "path": "https://aistudiocdn.com/path@^0.12.7",
     "express": "https://aistudiocdn.com/express@^5.1.0",
-    "fs": "https://aistudiocdn.com/fs@^0.0.1-security",
+    "path": "https://aistudiocdn.com/path@^0.12.7",
     "url": "https://aistudiocdn.com/url@^0.11.4",
-    "@testing-library/jest-dom": "https://aistudiocdn.com/@testing-library/jest-dom@^6.9.1",
-    "@testing-library/react": "https://aistudiocdn.com/@testing-library/react@^16.3.0",
-    "vitest/": "https://aistudiocdn.com/vitest@^4.0.14/",
-    "vitest": "https://aistudiocdn.com/vitest@^4.0.14"
+    "fs": "https://aistudiocdn.com/fs@^0.0.1-security"
   }
 }
 </script>
