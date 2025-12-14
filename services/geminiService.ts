@@ -28,7 +28,7 @@ const getApiKey = (): string => {
     console.warn("API_KEY not found in environment. Falling back to DEMO_API_KEY. Functionality may be limited.");
     return DEMO_API_KEY;
   }
-  return envKey;
+  return envKey.trim();
 };
 
 // Define the schema definition string for the prompt since we can't pass the object to config when using tools
