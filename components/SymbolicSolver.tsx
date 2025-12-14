@@ -18,8 +18,6 @@ const getNerdamer = () => {
   // Check if plugins are loaded (e.g. solveEquations exists) to ensure full library
   if (n && !n.solveEquations) {
       // Core might be loaded but plugins missing, treat as missing/partial for safety if needed
-      // but usually core has 'solve'. solveEquations comes from Algebra plugin.
-      // We will try to use it anyway but aware it might be partial.
   }
   return n;
 };
@@ -29,8 +27,6 @@ const formatMatrixForNerdamer = (expr: string): string => {
   if (typeof expr !== 'string') return String(expr || '');
   const clean = expr.replace(/\s/g, '');
   if (clean.startsWith('[[')) {
-    // Basic regex transform: [[a,b],[c,d]] -> matrix([a,b],[c,d])
-    // Remove outer brackets first
     const inner = clean.substring(1, clean.length - 1);
     return `matrix(${inner})`;
   }
@@ -40,55 +36,61 @@ const formatMatrixForNerdamer = (expr: string): string => {
 // Helper to convert array syntax [[1,2],[3,4]] to Algebrite syntax
 const formatMatrixForAlgebrite = (expr: string): string => {
   if (typeof expr !== 'string') return String(expr || '');
-  // Algebrite accepts square brackets: [[1,2],[3,4]]
   return expr.replace(/\s/g, '');
+};
+
+// Helper to round numbers in a string and format for LaTeX
+const formatDecimalLatex = (str: string): string => {
+  // 1. Round all float numbers to 4 decimal places
+  let clean = str.replace(/(\d+\.\d+)/g, (match) => {
+    return parseFloat(parseFloat(match).toFixed(4)).toString();
+  });
+  
+  // 2. Remove multiplication asterisks (e.g. 2*i -> 2i)
+  clean = clean.replace(/\*/g, '');
+
+  // 3. Format Lists [a,b] -> \left[ a, \quad b \right]
+  if (clean.startsWith('[') && clean.endsWith(']')) {
+      const inner = clean.substring(1, clean.length - 1);
+      // Split by comma, respecting nested brackets if any (naive split for simple lists)
+      const parts = inner.split(',');
+      const formattedParts = parts.map(p => p.trim());
+      return `\\left[ ${formattedParts.join(',\\quad ')} \\right]`;
+  }
+
+  return clean;
 };
 
 // Custom formatter to turn string list [[1,2],[3,4]] into LaTeX bmatrix
 const formatMatrixToLatex = (str: string): string => {
   if (typeof str !== 'string') return '';
-  // Check for pattern [[...],[...]]
-  // Allow spaces, newlines, fractions, negative numbers
-  // Using [\s\S]* to match across newlines if necessary
   if (/^\[\s*\[[\s\S]*\]\s*\]$/.test(str)) {
     try {
-      // Extract inner content: [1,2],[3,4]
       const inner = str.trim().slice(1, -1);
-      
-      // Match individual rows: [1,2] or [1/2, 3]
       const rows = inner.match(/\[.*?\]/g);
-      
       if (rows && rows.length > 0) {
         const latexRows = rows.map(row => {
-          // Remove brackets [ ... ]
           const content = row.slice(1, -1);
-          // Split by comma
           return content.split(',').map(val => {
               const cleaned = val.trim().replace(/\*/g, '');
-              // Convert simple fractions a/b to decimal with 3-4 places
+              // Convert simple fractions
               if (/^-?\d+\/\d+$/.test(cleaned)) {
                   const [n, d] = cleaned.split('/').map(Number);
-                  if (d !== 0) {
-                      return parseFloat((n / d).toFixed(4)).toString();
-                  }
+                  if (d !== 0) return parseFloat((n / d).toFixed(4)).toString();
               }
-              // Attempt to eval scalar math if possible
+              // Attempt to eval scalar math
               try {
                  const f = parseFloat(cleaned);
                  if (!isNaN(f) && cleaned.includes('.')) {
                      return parseFloat(f.toFixed(4)).toString();
                  }
               } catch(e) {}
-              
               return cleaned;
           }).join(' & ');
         });
-        
         return `\\begin{bmatrix} ${latexRows.join(' \\\\ ')} \\end{bmatrix}`;
       }
-    } catch (e) {
-      // console.log("Matrix parsing failed", e);
-    }
+    } catch (e) {}
   }
   return str;
 };
@@ -110,26 +112,21 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
   const [debugLog, setDebugLog] = useState<string[]>([]);
   const [showDebug, setShowDebug] = useState(false);
 
-  // Poll for libraries on mount/open
   useEffect(() => {
     if (!isOpen) return;
 
     let attempts = 0;
-    const maxAttempts = 30; // Try for ~6 seconds
+    const maxAttempts = 30; 
     
     const checkLibraries = () => {
       const nCheck = !!getNerdamer();
       const aCheck = !!getAlgebrite();
-      
       setLibraryStatus({ nerdamer: nCheck, algebrite: aCheck });
-
-      // Continue polling if either is missing
       if ((!nCheck || !aCheck) && attempts < maxAttempts) {
         attempts++;
         setTimeout(checkLibraries, 200);
       }
     };
-
     checkLibraries();
   }, [isOpen]);
 
@@ -150,13 +147,11 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
     setUsedEngine(null);
     setDebugLog([]);
 
-    // Final check for libraries right before execution
     const nCheck = !!getNerdamer();
     const aCheck = !!getAlgebrite();
     setLibraryStatus({ nerdamer: nCheck, algebrite: aCheck });
 
     try {
-      // 1. Get Structured Command from Gemini
       addLog("Parsing natural language with Gemini...");
       const command = await parseMathCommand(input);
       setParsedCommand(command);
@@ -224,48 +219,64 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
             addLog(`Nerdamer execution: ${nerdString}`);
             const obj = NerdamerEngine(nerdString);
             const evaluated = obj.evaluate();
-            const resultString = evaluated.text();
-            addLog(`Nerdamer output: ${resultString}`);
-
-            // FAILURE DETECTION
-            const failKeywords = ['integrate', 'defint', 'sum', 'limit', 'determinant', 'invert', 'taylor'];
-            const isFailure = 
-                (operation !== 'evaluate') && 
-                failKeywords.some(kw => resultString.includes(kw) && resultString.includes('('));
             
+            const resultString = evaluated.text();
+            addLog(`Nerdamer text output: ${resultString}`);
+
+            // Failure detection
+            const failKeywords = ['integrate', 'defint', 'sum', 'limit', 'determinant', 'invert', 'taylor'];
+            const isFailure = (operation !== 'evaluate') && failKeywords.some(kw => resultString.includes(kw) && resultString.includes('('));
             if (isFailure) {
                 addLog(`Nerdamer returned input (unsolved): ${resultString}`);
                 return false;
             }
 
-            // ATTEMPT DECIMAL RESOLUTION FOR SCALAR RESULTS
-            let decimalVal: number | null = null;
-            
-            // 1. Try internal decimals (covers irrational like sqrt(5))
+            // ATTEMPT DECIMAL PRIORITY
+            let decimalText = '';
             try {
-                const decStr = evaluated.text('decimals');
-                if (/^-?\d*\.?\d+(e[-+]?\d+)?$/.test(decStr)) {
-                    decimalVal = parseFloat(decStr);
-                }
+               decimalText = evaluated.text('decimals');
             } catch(e) {}
 
-            // 2. Try simple fraction
-            if (decimalVal === null && /^-?\d+\/\d+$/.test(resultString)) {
-                const [n, d] = resultString.split('/').map(Number);
-                if (d !== 0) decimalVal = n/d;
+            // Check if we should use decimal text
+            // 1. If resultString is fraction/irrational but decimalText is valid scalar
+            // 2. If resultString is a list and we want decimals for roots
+            let useDecimalText = false;
+            if (decimalText && decimalText !== resultString) {
+                // If it's a list [a, b], check if decimalText is also a list
+                if (resultString.startsWith('[') && decimalText.startsWith('[')) {
+                    useDecimalText = true;
+                } 
+                // If scalar decimal
+                else if (/^-?\d*\.?\d+$/.test(decimalText)) {
+                    useDecimalText = true;
+                }
+                // If complex scalar
+                else if (decimalText.includes('i') && decimalText.includes('.')) {
+                    useDecimalText = true;
+                }
             }
 
-            if (decimalVal !== null && !isNaN(decimalVal) && isFinite(decimalVal)) {
-                // Formatting to 3-4 decimal places, stripping trailing zeros
-                finalLatex = parseFloat(decimalVal.toFixed(4)).toString();
+            if (useDecimalText) {
+                addLog(`Using decimal text: ${decimalText}`);
+                finalLatex = formatDecimalLatex(decimalText);
             } else {
-                // Fallback to Symbolic TeX (matrices, algebraic expressions)
-                finalLatex = evaluated.toTeX();
+                // Check if resultString itself is simple enough to format directly
+                // e.g. [0.5+0.866i, ...]
+                if (resultString.startsWith('[') && resultString.includes('.')) {
+                    finalLatex = formatDecimalLatex(resultString);
+                } else if (/^-?\d+\/\d+$/.test(resultString)) {
+                     // Simple fraction -> Decimal
+                     const [n, d] = resultString.split('/').map(Number);
+                     if (d !== 0) finalLatex = parseFloat((n / d).toFixed(4)).toString();
+                     else finalLatex = evaluated.toTeX();
+                } else {
+                     // Fallback to standard symbolic TeX
+                     finalLatex = evaluated.toTeX();
+                }
             }
 
             setUsedEngine('Nerdamer');
-            setDecimalResult(null); // Clear secondary result since main is potentially decimal now
-
+            setDecimalResult(null); 
             return true;
 
         } catch (nerdError: any) {
@@ -289,22 +300,16 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                   if (start !== undefined && end !== undefined) {
                     algString = `defint(${expression},${variable},${start},${end})`;
                   } else {
-                    if (variable === 'x') {
-                         algString = `integral(${expression})`;
-                    } else {
-                         algString = `integral(${expression},${variable})`;
-                    }
+                    if (variable === 'x') algString = `integral(${expression})`;
+                    else algString = `integral(${expression},${variable})`;
                   }
                   break;
                 case 'differentiate':
                   algString = `d(${expression},${variable})`;
                   break;
                 case 'solve':
-                   if (expression.includes(',')) {
-                      algString = `roots(${expression})`; 
-                   } else {
-                      algString = `roots(${expression},${variable})`;
-                   }
+                   if (expression.includes(',')) algString = `roots(${expression})`; 
+                   else algString = `roots(${expression},${variable})`;
                    break;
                 case 'sum':
                    algString = `sum(${expression},${variable},${start},${end})`;
@@ -336,38 +341,41 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                  addLog(`Algebrite returned error: ${res}`);
                  return false;
               }
-              
-              let isRationalDecimal = false;
 
-              // TRY DECIMAL RESOLUTION FIRST
-              // Algebrite handles 'float(...)' to approximate
-              let decimalVal: number | null = null;
-              
+              // TRY DECIMAL RESOLUTION
+              let decimalRes = '';
               try {
-                  const floatRes = AlgebriteEngine.run(`float(${res})`);
-                  if (/^-?\d*\.?\d+(e[-+]?\d+)?$/.test(floatRes)) {
-                      decimalVal = parseFloat(floatRes);
-                  }
+                  decimalRes = AlgebriteEngine.run(`float(${res})`);
               } catch(e) {}
-              
-              if (decimalVal !== null && !isNaN(decimalVal) && isFinite(decimalVal) && !/^\[/.test(res)) {
-                   finalLatex = parseFloat(decimalVal.toFixed(4)).toString();
-                   isRationalDecimal = true;
-              } else {
-                  // Fallbacks for matrices or non-numeric
-                  if (/^\[\s*\[/.test(res)) {
-                       // Matrix
-                       finalLatex = formatMatrixToLatex(res);
-                       addLog(`Formatted Matrix LaTeX: ${finalLatex}`);
+
+              if (decimalRes && !decimalRes.includes("Stop")) {
+                  // If result is list or scalar, prefer decimalRes
+                  if (decimalRes.startsWith('[') || /^-?\d*\.?\d+(e[-+]?\d+)?$/.test(decimalRes)) {
+                      addLog(`Using Algebrite decimal: ${decimalRes}`);
+                      finalLatex = formatDecimalLatex(decimalRes);
                   } else {
-                       // Standard Conversion
+                      // Fallback for matrix or complex structure
+                      if (/^\[\s*\[/.test(res)) {
+                           finalLatex = formatMatrixToLatex(res);
+                      } else {
+                           const NerdamerEngine = getNerdamer();
+                           if (NerdamerEngine) {
+                              try { finalLatex = NerdamerEngine(res).toTeX(); } 
+                              catch(nErr) { finalLatex = res.replace(/\*/g, ''); }
+                           } else {
+                              finalLatex = res.replace(/\*/g, '');
+                           }
+                      }
+                  }
+              } else {
+                  // Normal fallback
+                   if (/^\[\s*\[/.test(res)) {
+                       finalLatex = formatMatrixToLatex(res);
+                  } else {
                        const NerdamerEngine = getNerdamer();
                        if (NerdamerEngine) {
-                          try {
-                              finalLatex = NerdamerEngine(res).toTeX();
-                          } catch(nErr) {
-                               finalLatex = res.replace(/\*/g, '');
-                          }
+                          try { finalLatex = NerdamerEngine(res).toTeX(); } 
+                          catch(nErr) { finalLatex = res.replace(/\*/g, ''); }
                        } else {
                           finalLatex = res.replace(/\*/g, '');
                        }
@@ -376,7 +384,6 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
 
               setUsedEngine('Algebrite');
               setDecimalResult(null); 
-
               return true;
 
             } catch (algError: any) {
@@ -395,7 +402,6 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
              solved = runNerdamer();
          }
       } else {
-         // Default (or explicitly nerdamer)
          solved = runNerdamer();
          if (!solved) {
              addLog("Nerdamer failed, trying Algebrite...");
@@ -445,7 +451,6 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
 
         <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
             
-            {/* Library Status Warning - Only show if both missing AND we've finished checking */}
             {(!libraryStatus.nerdamer && !libraryStatus.algebrite) && (
                 <div className="mb-4 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/30 rounded-lg flex items-center justify-between text-xs text-amber-600 dark:text-amber-400">
                    <span className="flex items-center">
