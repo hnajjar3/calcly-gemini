@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { ArrowRight, Sparkles, Cpu, Search, RefreshCw, Zap, Brain, Image as ImageIcon, Camera, X, Sun, Moon, Calculator as CalcIcon, Mic, Square, Sigma, Plus, Nu, TrendingUp, Code, Globe, Music } from './components/icons';
 import { HistoryItem, ModelMode } from './types';
@@ -272,7 +273,7 @@ const App: React.FC = () => {
           
            <button
             onClick={() => setShowSymbolicSolver(true)}
-            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors hidden sm:block"
+            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
             title="Open Symbolic Solver"
           >
             <Sigma className="w-5 h-5" />
@@ -280,7 +281,7 @@ const App: React.FC = () => {
           
            <button
             onClick={() => setShowNumericalSolver(true)}
-            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors hidden sm:block"
+            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
             title="Open Numerical Solver"
           >
             <Nu className="w-5 h-5" />

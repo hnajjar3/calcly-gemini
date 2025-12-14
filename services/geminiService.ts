@@ -17,15 +17,22 @@ const DEMO_API_KEY = "AIzaSy_DEMO_KEY_PLACEHOLDER_CHANGE_ME";
 
 // Helper to ensure API key presence
 const getApiKey = (): string => {
-  const envKey = (typeof window !== 'undefined' && window.env && window.env.API_KEY) 
-              ? window.env.API_KEY 
-              : process.env.API_KEY;
-
-  if (!envKey) {
-    console.warn("API_KEY not found in environment. Falling back to DEMO_API_KEY. Functionality may be limited.");
-    return DEMO_API_KEY;
+  // Check runtime injected env (cloud run / docker)
+  if (typeof window !== 'undefined' && window.env && window.env.API_KEY) {
+      return window.env.API_KEY;
   }
-  return envKey.trim();
+  
+  // Check build-time injected env (vite) - safe access to process
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+        return process.env.API_KEY;
+    }
+  } catch(e) {
+    // process not defined
+  }
+
+  console.warn("API_KEY not found in environment. Falling back to DEMO_API_KEY. Functionality may be limited.");
+  return DEMO_API_KEY;
 };
 
 // Define the schema definition string for the prompt since we can't pass the object to config when using tools
@@ -74,22 +81,33 @@ const schemaDefinition = `
     },
     "chart": {
       "type": "OBJECT",
+      "description": "Structured data for Chart.js",
       "properties": {
-        "type": { "type": "STRING", "enum": ["line", "bar", "area", "scatter", "pie"] },
+        "type": { "type": "STRING", "enum": ["line", "bar", "pie", "doughnut", "radar", "scatter"] },
         "title": { "type": "STRING" },
-        "xLabel": { "type": "STRING" },
-        "yLabel": { "type": "STRING" },
-        "seriesKeys": { "type": "ARRAY", "items": { "type": "STRING" } },
-        "data": { 
+        "labels": { 
+          "type": "ARRAY", 
+          "items": { "type": "STRING" }, 
+          "description": "Labels for the X-axis (bar/line) or segments (pie/doughnut)" 
+        },
+        "datasets": { 
            "type": "ARRAY", 
-           "items": { "type": "OBJECT", "description": "Data points with 'x' and series keys" } 
+           "items": { 
+             "type": "OBJECT", 
+             "properties": {
+               "label": { "type": "STRING", "description": "Name of this dataset (e.g., 'Hummus')" },
+               "data": { "type": "ARRAY", "items": { "type": "NUMBER" }, "description": "Data points corresponding to labels" }
+             },
+             "required": ["label", "data"]
+           } 
         }
-      }
+      },
+      "required": ["type", "datasets"]
     },
     "suggestions": {
       "type": "ARRAY",
       "items": { "type": "STRING" },
-      "description": "3-5 short, contextual follow-up actions or questions for the user (e.g., 'Show step-by-step', 'Plot graph', 'Convert to units')"
+      "description": "3-5 short, contextual follow-up actions or questions for the user"
     }
   },
   "required": ["interpretation", "result", "sections"]
@@ -153,15 +171,19 @@ export const solveQuery = async (
     1.  **Structure**: The 'result' field is an ARRAY of objects. 
         - You can mix Markdown text and LaTeX math in 'markdown' parts.
         - **IMPORTANT**: If you use LaTeX math, YOU MUST wrap it in single \`$\` (inline) or double \`$$\` (block).
-        - **CRITICAL**: If you use Currency (e.g. $50), you **MUST** escape the dollar sign like \`\\$50\`.
     2.  **Tables**: For data comparisons, nutritional info, or specs, USE type 'table' in 'sections' and populate 'tableData'.
-    3.  **Visualization**: If the query involves math functions, statistical comparisons, or trends, YOU MUST generate a 'chart' object.
-        - Use 'bar' for comparisons between items.
-        - Use 'line' for trends over time.
-        - Use 'pie' for compositions or part-to-whole (e.g. nutrient breakdown, market share).
+    3.  **Visualization (Charts)**:
+        - If the query implies comparison, statistics, trends, or distribution, YOU MUST generate a 'chart' object.
+        - **Format**: Return a JSON structure compatible with Chart.js:
+          - 'labels': An array of strings for the X-axis (e.g. ["Protein", "Fat", "Carbs"]).
+          - 'datasets': An array of objects, each with a 'label' (series name) and 'data' (array of numbers).
+        - **Comparisons**: For "Hummus vs Guacamole", provide ONE chart with 'labels' as the nutrients and TWO 'datasets' (one for Hummus, one for Guacamole).
+        - **Composition**: Use type 'pie' or 'doughnut' for breakdowns.
+        - **Profiles**: Use type 'radar' for comparing multi-attribute profiles (e.g. nutrition, stats).
+        - **Trends**: Use type 'line' for time series.
+        - **Magnitudes**: Use type 'bar' for comparing amounts.
     4.  **Accuracy**: Use the googleSearch tool if the query requires up-to-date information.
     5.  **Format**: Return ONLY valid raw JSON matching the schema below.
-    6.  **JSON & Escaping**: All backslashes in LaTeX must be double-escaped (e.g., "\\\\approx").
     
     SCHEMA:
     ${schemaDefinition}
@@ -258,20 +280,6 @@ export const solveQuery = async (
       if (sources.length > 0) {
         parsed.sources = sources;
       }
-    }
-
-    // Chart data normalization
-    if (parsed.chart && parsed.chart.data) {
-        parsed.chart.data = parsed.chart.data.map(d => {
-            const clean: any = { x: d.x };
-            if (typeof d['value1'] === 'number') clean[parsed.chart!.seriesKeys[0] || 'value'] = d['value1'];
-            if (typeof d['value2'] === 'number') clean[parsed.chart!.seriesKeys[1] || 'value2'] = d['value2'];
-            if (typeof d['value3'] === 'number') clean[parsed.chart!.seriesKeys[2] || 'value3'] = d['value3'];
-            parsed.chart!.seriesKeys.forEach(key => {
-               if (d[key] !== undefined) clean[key] = d[key];
-            });
-            return clean;
-        });
     }
 
     // Safety Defaults

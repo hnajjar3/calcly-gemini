@@ -1,16 +1,17 @@
 
-export interface ChartDataPoint {
-  x: string | number;
-  [key: string]: string | number | undefined;
+export interface ChartDataset {
+  label: string;
+  data: number[];
+  // Optional style overrides the AI might suggest, though usually handled by frontend theme
+  backgroundColor?: string | string[];
+  borderColor?: string | string[];
 }
 
 export interface ChartConfig {
-  type: 'line' | 'bar' | 'area' | 'scatter' | 'pie';
-  title: string;
-  xLabel: string;
-  yLabel: string;
-  data: ChartDataPoint[];
-  seriesKeys: string[]; // Keys in data to plot (e.g., ["y", "z"] for multiple lines)
+  type: 'line' | 'bar' | 'area' | 'scatter' | 'pie' | 'doughnut' | 'radar';
+  title?: string;
+  labels?: string[]; // X-axis labels (categories)
+  datasets: ChartDataset[];
 }
 
 export interface TableData {

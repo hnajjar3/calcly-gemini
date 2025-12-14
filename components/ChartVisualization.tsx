@@ -1,275 +1,188 @@
 
 import React from 'react';
-import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  AreaChart,
-  Area,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from 'recharts';
 import { ChartConfig } from '../types';
+import 'chart.js/auto';
+import { ChartData, ChartOptions } from 'chart.js';
+import { Line, Bar, Pie, Doughnut, Radar, Scatter } from 'react-chartjs-2';
 
 interface Props {
   config: ChartConfig;
   isDarkMode: boolean;
 }
 
-// Professional color palette with gradients
+// Professional color palette
 const THEME_COLORS = [
-  { main: '#6366f1', gradient: ['#818cf8', '#4f46e5'] }, // Indigo
-  { main: '#ec4899', gradient: ['#f472b6', '#db2777'] }, // Pink
-  { main: '#10b981', gradient: ['#34d399', '#059669'] }, // Emerald
-  { main: '#f59e0b', gradient: ['#fbbf24', '#d97706'] }, // Amber
-  { main: '#0ea5e9', gradient: ['#38bdf8', '#0284c7'] }, // Sky
-  { main: '#8b5cf6', gradient: ['#a78bfa', '#7c3aed'] }, // Violet
-  { main: '#f43f5e', gradient: ['#fb7185', '#e11d48'] }, // Rose
-  { main: '#84cc16', gradient: ['#a3e635', '#65a30d'] }, // Lime
+  { main: '#6366f1', bg: 'rgba(99, 102, 241, 0.5)' }, // Indigo
+  { main: '#ec4899', bg: 'rgba(236, 72, 153, 0.5)' }, // Pink
+  { main: '#10b981', bg: 'rgba(16, 185, 129, 0.5)' }, // Emerald
+  { main: '#f59e0b', bg: 'rgba(245, 158, 11, 0.5)' },  // Amber
+  { main: '#0ea5e9', bg: 'rgba(14, 165, 233, 0.5)' },  // Sky
+  { main: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.5)' },  // Violet
+  { main: '#f43f5e', bg: 'rgba(244, 63, 94, 0.5)' },   // Rose
+  { main: '#84cc16', bg: 'rgba(132, 204, 22, 0.5)' },  // Lime
 ];
 
 export const ChartVisualization: React.FC<Props> = ({ config, isDarkMode }) => {
-  const gridColor = isDarkMode ? '#334155' : '#e2e8f0'; // slate-700 vs slate-200
-  const tickColor = isDarkMode ? '#94a3b8' : '#64748b'; // slate-400 vs slate-500
   
-  // Glassmorphism tooltip styles
-  const tooltipStyle = {
-    backgroundColor: isDarkMode ? 'rgba(30, 41, 59, 0.85)' : 'rgba(255, 255, 255, 0.85)',
-    border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.5)'}`,
-    borderRadius: '12px',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-    backdropFilter: 'blur(8px)',
-    padding: '8px 12px',
-    color: isDarkMode ? '#f1f5f9' : '#1e293b',
-    fontSize: '11px',
-    fontWeight: 600,
-    outline: 'none'
+  // Common options for responsiveness and theme
+  const commonOptions: ChartOptions<any> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    color: isDarkMode ? '#cbd5e1' : '#475569',
+    scales: {
+      x: {
+        grid: { color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' },
+        ticks: { color: isDarkMode ? '#94a3b8' : '#64748b' },
+        display: config.type !== 'pie' && config.type !== 'doughnut' && config.type !== 'radar'
+      },
+      y: {
+        grid: { color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' },
+        ticks: { color: isDarkMode ? '#94a3b8' : '#64748b' },
+        display: config.type !== 'pie' && config.type !== 'doughnut' && config.type !== 'radar'
+      },
+      r: { // For Radar charts
+        grid: { color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' },
+        pointLabels: { 
+            color: isDarkMode ? '#e2e8f0' : '#1e293b', 
+            font: { size: 11 } 
+        },
+        ticks: { backdropColor: 'transparent', color: isDarkMode ? '#94a3b8' : '#64748b' },
+        display: config.type === 'radar'
+      }
+    },
+    plugins: {
+      legend: {
+        labels: { color: isDarkMode ? '#e2e8f0' : '#1e293b', font: { size: 11 } },
+        position: 'top' as const,
+      },
+      tooltip: {
+        backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)',
+        titleColor: isDarkMode ? '#f8fafc' : '#0f172a',
+        bodyColor: isDarkMode ? '#e2e8f0' : '#334155',
+        borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+        borderWidth: 1,
+        padding: 10,
+        boxPadding: 4,
+        usePointStyle: true,
+      }
+    }
   };
 
-  const renderGradients = () => (
-    <defs>
-      {/* Area Gradients */}
-      {config.seriesKeys.map((key, index) => {
-        const theme = THEME_COLORS[index % THEME_COLORS.length];
-        return (
-          <linearGradient key={`grad-${key}`} id={`color-${key}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor={theme.main} stopOpacity={0.4}/>
-            <stop offset="95%" stopColor={theme.main} stopOpacity={0}/>
-          </linearGradient>
-        );
-      })}
+  const getChartData = (overrideDatasets?: any[]): ChartData<any> => {
+    const labels = config.labels || [];
+    
+    // Process datasets
+    const datasets = (overrideDatasets || config.datasets).map((ds, i) => {
+      const theme = THEME_COLORS[i % THEME_COLORS.length];
       
-      {/* Bar Gradients for Volume */}
-      {config.seriesKeys.map((key, index) => {
-        const theme = THEME_COLORS[index % THEME_COLORS.length];
-        return (
-          <linearGradient key={`bar-grad-${key}`} id={`bar-color-${key}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={theme.gradient[0]} stopOpacity={1}/>
-            <stop offset="100%" stopColor={theme.gradient[1]} stopOpacity={1}/>
-          </linearGradient>
-        );
-      })}
+      // COLOR STRATEGY:
+      // Pie/Doughnut: Array of colors for each segment (data point)
+      // Bar/Line/Radar: Single color for the whole series (dataset)
+      
+      const isSegmented = config.type === 'pie' || config.type === 'doughnut';
+      
+      let bg: any;
+      let border: any;
 
-      {/* Drop Shadow for Line Elevation */}
-      <filter id="lineShadow" height="200%">
-        <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor={isDarkMode ? "rgba(0,0,0,0.4)" : "rgba(99, 102, 241, 0.2)"} />
-      </filter>
-    </defs>
-  );
+      if (isSegmented) {
+         // Cycle through themes for each data point
+         bg = labels.map((_, idx) => THEME_COLORS[idx % THEME_COLORS.length].main);
+         border = isDarkMode ? '#1e293b' : '#ffffff';
+      } else {
+         // Single color for series
+         bg = theme.bg;
+         border = theme.main;
+      }
 
-  const axisStyle = {
-     tick: { fontSize: 10, fill: tickColor, fontWeight: 500, fontFamily: 'inherit' },
-     tickLine: false,
-     axisLine: { stroke: gridColor, strokeWidth: 1, strokeOpacity: 0.5 },
-     tickMargin: 8
+      return {
+        label: ds.label,
+        data: ds.data,
+        backgroundColor: bg,
+        borderColor: border,
+        borderWidth: 2,
+        pointBackgroundColor: theme.main,
+        pointBorderColor: isDarkMode ? '#1e293b' : '#ffffff',
+        pointHoverRadius: 6,
+        fill: config.type === 'area' || config.type === 'radar',
+        tension: 0.3,
+      };
+    });
+
+    return { labels, datasets };
   };
 
-  const renderChart = () => {
+  const renderContent = () => {
+    // 1. Comparison Pie Charts (Side-by-Side)
+    // Chart.js doesn't support multiple datasets in one pie easily in a "side-by-side" manner on one canvas.
+    // So we render multiple Chart instances.
+    if ((config.type === 'pie' || config.type === 'doughnut') && config.datasets.length > 1) {
+       return (
+         <div className="flex flex-wrap items-center justify-center gap-8 w-full h-full overflow-y-auto custom-scrollbar p-2">
+            {config.datasets.map((ds, idx) => {
+                const singleChartData = getChartData([ds]);
+                
+                const pieOptions = {
+                    ...commonOptions,
+                    plugins: {
+                        ...commonOptions.plugins,
+                        legend: { position: 'bottom' as const },
+                        title: { 
+                          display: true, 
+                          text: ds.label, 
+                          color: isDarkMode ? '#e2e8f0' : '#1e293b', 
+                          font: {size: 14} 
+                        }
+                    }
+                };
+
+                return (
+                    <div key={idx} className="relative w-[220px] h-[260px]">
+                        {config.type === 'doughnut' ? 
+                            <Doughnut data={singleChartData} options={pieOptions} /> : 
+                            <Pie data={singleChartData} options={pieOptions} />
+                        }
+                    </div>
+                );
+            })}
+         </div>
+       );
+    }
+
+    // 2. Standard Charts
+    const data = getChartData();
+    
     switch (config.type) {
-      case 'pie':
-        const valueKey = config.seriesKeys[0] || 'value';
-        return (
-          <PieChart>
-             <Pie
-              data={config.data}
-              cx="50%"
-              cy="50%"
-              labelLine={false}
-              // Donut style with rounded ends
-              innerRadius={60}
-              outerRadius={85}
-              paddingAngle={5}
-              dataKey={valueKey}
-              nameKey="x"
-              cornerRadius={6}
-            >
-              {config.data.map((entry, index) => (
-                <Cell 
-                  key={`cell-${index}`} 
-                  fill={THEME_COLORS[index % THEME_COLORS.length].main} 
-                  stroke={isDarkMode ? '#1e293b' : '#fff'}
-                  strokeWidth={2}
-                />
-              ))}
-            </Pie>
-            <Tooltip 
-                contentStyle={tooltipStyle} 
-                itemStyle={{ color: isDarkMode ? '#e2e8f0' : '#1e293b', paddingBottom: 2 }}
-                cursor={false}
-            />
-            <Legend 
-                wrapperStyle={{ paddingTop: '16px', fontSize: '11px', fontWeight: 500, opacity: 0.8 }} 
-                iconType="circle"
-                verticalAlign="bottom" 
-                align="center"
-            />
-          </PieChart>
-        );
-
-      case 'bar':
-        return (
-          <BarChart data={config.data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-            {renderGradients()}
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} opacity={0.4} />
-            <XAxis dataKey="x" {...axisStyle} />
-            <YAxis {...axisStyle} />
-            <Tooltip 
-                contentStyle={tooltipStyle} 
-                itemStyle={{ color: isDarkMode ? '#e2e8f0' : '#1e293b', paddingBottom: 2 }}
-                cursor={{ fill: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }}
-            />
-            <Legend 
-                wrapperStyle={{ paddingTop: '16px', fontSize: '11px', fontWeight: 500, opacity: 0.8 }} 
-                iconType="circle"
-            />
-            {config.seriesKeys.map((key, index) => {
-              return (
-                <Bar 
-                  key={key} 
-                  dataKey={key} 
-                  fill={`url(#bar-color-${key})`}
-                  radius={[6, 6, 0, 0]}
-                  maxBarSize={60}
-                  animationDuration={1500}
-                  animationEasing="ease-out"
-                />
-              );
-            })}
-          </BarChart>
-        );
-      case 'area':
-        return (
-          <AreaChart data={config.data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-            {renderGradients()}
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} opacity={0.4} />
-            <XAxis dataKey="x" {...axisStyle} />
-            <YAxis {...axisStyle} />
-            <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: isDarkMode ? '#e2e8f0' : '#1e293b', paddingBottom: 2 }} />
-            <Legend wrapperStyle={{ paddingTop: '16px', fontSize: '11px', fontWeight: 500, opacity: 0.8 }} iconType="circle"/>
-            {config.seriesKeys.map((key, index) => {
-              const theme = THEME_COLORS[index % THEME_COLORS.length];
-              return (
-                <Area 
-                  key={key} 
-                  type="monotone" 
-                  dataKey={key} 
-                  stroke={theme.main} 
-                  strokeWidth={2}
-                  fillOpacity={1} 
-                  fill={`url(#color-${key})`} 
-                  animationDuration={1500}
-                  animationEasing="ease-out"
-                />
-              );
-            })}
-          </AreaChart>
-        );
-      case 'scatter': 
-        // Rendering scatter as LineChart with visible dots and no line stroke for compatibility
-        return (
-           <LineChart data={config.data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-            {renderGradients()}
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} opacity={0.4} />
-            <XAxis dataKey="x" {...axisStyle} />
-            <YAxis {...axisStyle} />
-            <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: isDarkMode ? '#e2e8f0' : '#1e293b', paddingBottom: 2 }} />
-            <Legend wrapperStyle={{ paddingTop: '16px', fontSize: '11px', fontWeight: 500, opacity: 0.8 }} iconType="circle"/>
-            {config.seriesKeys.map((key, index) => {
-              const theme = THEME_COLORS[index % THEME_COLORS.length];
-              return (
-                <Line 
-                  key={key} 
-                  type="monotone" 
-                  dataKey={key} 
-                  stroke={theme.main} 
-                  strokeWidth={0}
-                  dot={{ r: 4, fill: theme.main, strokeWidth: 2, stroke: isDarkMode ? '#1e293b' : '#fff' }}
-                  activeDot={{ r: 6, filter: "url(#lineShadow)", strokeWidth: 0 }}
-                  animationDuration={1500}
-                  animationEasing="ease-out"
-                />
-              );
-            })}
-          </LineChart>
-        );
-
-      case 'line':
-      default:
-        return (
-          <LineChart data={config.data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-            {renderGradients()}
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} opacity={0.4} />
-            <XAxis dataKey="x" {...axisStyle} />
-            <YAxis {...axisStyle} />
-            <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: isDarkMode ? '#e2e8f0' : '#1e293b', paddingBottom: 2 }} />
-            <Legend wrapperStyle={{ paddingTop: '16px', fontSize: '11px', fontWeight: 500, opacity: 0.8 }} iconType="circle"/>
-            {config.seriesKeys.map((key, index) => {
-              const theme = THEME_COLORS[index % THEME_COLORS.length];
-              return (
-                <Line 
-                  key={key} 
-                  type="monotone" 
-                  dataKey={key} 
-                  stroke={theme.main} 
-                  strokeWidth={3}
-                  dot={{ r: 0, fill: theme.main, strokeWidth: 0 }} 
-                  activeDot={{ r: 5, fill: theme.main, stroke: isDarkMode ? '#1e293b' : '#fff', strokeWidth: 2 }}
-                  filter="url(#lineShadow)"
-                  animationDuration={1500}
-                  animationEasing="ease-out"
-                />
-              );
-            })}
-          </LineChart>
-        );
+        case 'bar':
+            return <Bar data={data} options={commonOptions} />;
+        case 'line':
+        case 'area':
+             // For area, we set fill: true in getChartData
+             return <Line data={data} options={commonOptions} />;
+        case 'radar':
+             return <Radar data={data} options={commonOptions} />;
+        case 'pie':
+             return <Pie data={data} options={commonOptions} />;
+        case 'doughnut':
+             return <Doughnut data={data} options={commonOptions} />;
+        case 'scatter':
+             return <Scatter data={data} options={commonOptions} />;
+        default:
+             return <Line data={data} options={commonOptions} />;
     }
   };
 
   return (
-    <div className="w-full h-64 sm:h-80 bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 mt-4 shadow-sm dark:shadow-black/20 transition-all duration-300 hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 group">
-      <div className="flex items-center justify-between mb-4 pl-1">
+    <div className="w-full h-72 sm:h-96 bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 mt-4 shadow-sm dark:shadow-black/20 transition-all duration-300 hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 group">
+      <div className="flex items-center justify-between mb-2 pl-1 h-8">
         <div>
-          <h3 className="text-[10px] font-bold text-slate-800 dark:text-slate-100 uppercase tracking-widest flex items-center gap-2">
-            {config.title}
+          <h3 className="text-[11px] font-bold text-slate-800 dark:text-slate-100 uppercase tracking-widest flex items-center gap-2">
+            {config.title || 'Visualization'}
           </h3>
-          <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-1 font-semibold tracking-wide uppercase">
-            {config.xLabel} <span className="text-slate-300 dark:text-slate-600 mx-1">/</span> {config.yLabel}
-          </p>
         </div>
       </div>
       
-      <div className="w-full h-full pb-6 pr-2">
-         <ResponsiveContainer width="100%" height="100%">
-           {renderChart()}
-         </ResponsiveContainer>
+      <div className="w-full h-[calc(100%-2rem)] pb-2 relative">
+           {renderContent()}
       </div>
     </div>
   );
