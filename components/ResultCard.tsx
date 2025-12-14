@@ -1,7 +1,8 @@
+
 import React, { useEffect, useRef } from 'react';
-import { HistoryItem, ResultPart } from '../types';
+import { HistoryItem, ResultPart, Section, TableData } from '../types';
 import { ChartVisualization } from './ChartVisualization';
-import { LatexRenderer } from './LatexRenderer';
+import { LatexRenderer, splitLatex } from './LatexRenderer';
 import { Copy, Sparkles, AlertTriangle, Zap, Brain, Image as ImageIcon, ExternalLink, RefreshCw, ArrowRight, Lightbulb, Mic, Volume2 } from '../components/icons';
 
 // Access global KaTeX, Prism, and Marked loaded via script tags
@@ -56,334 +57,255 @@ const CodeBlock: React.FC<{ code: string; language?: string }> = ({ code, langua
   );
 };
 
-// Helper for inline markdown in the Main Result (lightweight)
-const InlineMarkdown: React.FC<{ content: string }> = ({ content }) => {
-  // Use marked for basic inline styling like bold/italic, but keep it simple
-  let html = content;
+// Component to render robust Markdown + LaTeX using safe parser
+const RobustMarkdown: React.FC<{ content: string }> = ({ content }) => {
+  
+  // Use safe tokenizer instead of regex with lookbehind
+  const tokens = splitLatex(content);
+  
+  // Reconstruct string with placeholders for Markdown processing
+  const placeholders: string[] = [];
+  let processed = '';
+
+  tokens.forEach((token) => {
+    if (token.type === 'text') {
+      processed += token.content;
+    } else {
+      placeholders.push(token.type === 'block' ? `$$${token.content}$$` : `$${token.content}$`);
+      processed += `LATEXPLACEHOLDER${placeholders.length - 1}ENDLATEXPLACEHOLDER`;
+    }
+  });
+
+  // 2. Render Markdown
   const markedLib = (window as any).marked;
   if (markedLib) {
      try {
-         html = markedLib.parseInline(content, { breaks: true, gfm: true });
+       // Using standard block parse for robust rendering
+       processed = markedLib.parse(processed, { breaks: true, gfm: true });
      } catch (e) {
-         html = content;
+       console.error("Markdown parsing failed", e);
      }
   }
-  return <span dangerouslySetInnerHTML={{ __html: html }} />;
-};
 
-// Component to render robust Markdown + LaTeX for SECTIONS
-const SectionMarkdownContent: React.FC<{ content: string }> = ({ content }) => {
-  let processed = content;
-  const currencyPlaceholders: string[] = [];
-  const latexPlaceholders: string[] = [];
-
-  // 1. Protect Currency
-  processed = processed.replace(/(\$(?:\d{1,3}(?:,\d{3})*|(?:\d+))(?:\.\d+)?)/g, (match) => {
-    currencyPlaceholders.push(match);
-    return `%%%CURRENCY_PLACEHOLDER_${currencyPlaceholders.length - 1}%%%`;
-  });
-
-  // 2. Extract LaTeX
-  const latexRegex = /(\$\$[\s\S]*?\$\$|(?<!\\)\$(?!\s)(?:[^$\n]|\\\$)*?(?<!\s)(?<!\\)\$)/g;
-  processed = processed.replace(latexRegex, (match) => {
-    latexPlaceholders.push(match);
-    return `%%%LATEX_PLACEHOLDER_${latexPlaceholders.length - 1}%%%`;
-  });
-
-  // 3. Restore Currency
-  processed = processed.replace(/%%%CURRENCY_PLACEHOLDER_(\d+)%%%/g, (_, index) => {
-    return currencyPlaceholders[parseInt(index)];
-  });
-
-  // 4. Markdown Parse
-  let html = '';
-  const markedLib = (window as any).marked;
-  if (markedLib) {
-    try {
-      html = markedLib.parse(processed, { breaks: true, gfm: true });
-    } catch (e) {
-      html = processed;
-    }
-  } else {
-    html = processed;
-  }
-
-  // 5. Restore LaTeX
-  const htmlWithLatex = html.replace(/%%%LATEX_PLACEHOLDER_(\d+)%%%/g, (_, index) => {
-    const latex = latexPlaceholders[parseInt(index)];
-    if (typeof katex !== 'undefined') {
+  // 3. Restore LaTeX
+  processed = processed.replace(/LATEXPLACEHOLDER(\d+)ENDLATEXPLACEHOLDER/g, (_, index) => {
+      const mathFull = placeholders[parseInt(index)];
+      // Check if block or inline based on $$ wrapper
+      const isBlock = mathFull.startsWith('$$');
+      const innerContent = isBlock ? mathFull.slice(2, -2) : mathFull.slice(1, -1);
+      
       try {
-        const isBlock = latex.startsWith('$$');
-        const math = isBlock ? latex.slice(2, -2) : latex.slice(1, -1);
-        return katex.renderToString(math, { displayMode: isBlock, throwOnError: false });
-      } catch (e) { return latex; }
-    }
-    return latex;
+          return katex.renderToString(innerContent, { 
+            displayMode: isBlock, 
+            throwOnError: false 
+          });
+      } catch(e) { 
+          return mathFull; 
+      }
   });
 
   return (
-    <div 
-      className="markdown-content text-sm text-slate-700 dark:text-slate-300 leading-relaxed break-words"
-      dangerouslySetInnerHTML={{ __html: htmlWithLatex }} 
-    />
+    <div className="markdown-content text-sm text-slate-700 dark:text-slate-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: processed }} />
+  );
+};
+
+// New Structured Table Renderer
+const TableSection: React.FC<{ data: TableData }> = ({ data }) => {
+  if (!data || !data.rows || data.rows.length === 0) return null;
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm bg-white dark:bg-slate-800/50 my-3">
+      <table className="w-full text-sm text-left border-collapse">
+        {data.headers && data.headers.length > 0 && (
+          <thead className="bg-slate-50 dark:bg-slate-900/50 text-xs uppercase text-slate-500 dark:text-slate-400 font-semibold tracking-wider">
+            <tr>
+              {data.headers.map((h, i) => (
+                <th key={i} className="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+        )}
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+          {data.rows.map((row, i) => (
+            <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-slate-700/30 transition-colors">
+              {row.map((cell, j) => (
+                <td key={j} className="px-4 py-3 text-slate-700 dark:text-slate-300">
+                  {/* Render each cell using LatexRenderer with markdown support enabled */}
+                  <LatexRenderer content={cell} renderMarkdown={true} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 };
 
 export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSuggestionClick }) => {
-  const resultParts = item.response?.result || [];
   
-  // Reconstruct plain text for clipboard/TTS
-  const resultText = resultParts.map(p => p.content).join('');
-
-  const speakResult = () => {
-    if (!resultText) return;
-    const utterance = new SpeechSynthesisUtterance(resultText);
-    window.speechSynthesis.speak(utterance);
-  };
-
   if (item.loading) {
     return (
-      <div className="w-full max-w-5xl mx-auto mb-6 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 animate-pulse transition-colors">
-        <div className="flex items-center space-x-3 mb-4">
-           <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
-             <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 animate-spin" />
-           </div>
-           <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/3"></div>
-        </div>
+      <div className="w-full max-w-3xl mx-auto bg-white/80 dark:bg-slate-800/80 backdrop-blur-md rounded-2xl p-6 shadow-lg border border-slate-200 dark:border-slate-700/50 animate-pulse">
+        <div className="h-6 w-3/4 bg-slate-200 dark:bg-slate-700 rounded mb-4"></div>
         <div className="space-y-3">
-          <div className="h-12 bg-slate-100 dark:bg-slate-700/50 rounded-lg w-full"></div>
-          <div className="h-24 bg-slate-100 dark:bg-slate-700/50 rounded-lg w-full"></div>
+          <div className="h-4 bg-slate-100 dark:bg-slate-700/50 rounded w-full"></div>
+          <div className="h-4 bg-slate-100 dark:bg-slate-700/50 rounded w-5/6"></div>
+          <div className="h-4 bg-slate-100 dark:bg-slate-700/50 rounded w-4/6"></div>
         </div>
       </div>
     );
   }
 
   if (item.error) {
-     return (
-      <div className="w-full max-w-5xl mx-auto mb-6 bg-red-50 dark:bg-red-900/10 rounded-xl shadow-sm border border-red-100 dark:border-red-900/30 p-5 transition-colors">
-        <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center space-x-3 text-red-700 dark:text-red-400">
-                <AlertTriangle className="w-4 h-4" />
-                <h3 className="font-semibold text-xs uppercase tracking-wide">Computation Error</h3>
-            </div>
-            {onRetry && (
-                <button 
-                    onClick={() => onRetry(item.id)}
-                    className="flex items-center space-x-1 px-3 py-1 bg-white dark:bg-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/50 text-red-600 dark:text-red-300 rounded-lg text-[10px] font-medium border border-red-100 dark:border-red-800 transition-colors shadow-sm"
-                >
-                    <RefreshCw className="w-3 h-3" />
-                    <span>Retry</span>
-                </button>
-            )}
+    return (
+      <div className="w-full max-w-3xl mx-auto bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 rounded-2xl p-6 shadow-sm flex items-start space-x-4">
+        <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg text-red-600 dark:text-red-400">
+          <AlertTriangle className="w-6 h-6" />
         </div>
-        <p className="text-red-600 dark:text-red-300 text-sm">{item.error}</p>
+        <div className="flex-1">
+          <h3 className="font-semibold text-red-900 dark:text-red-300 mb-1">Unable to process request</h3>
+          <p className="text-sm text-red-700 dark:text-red-400 mb-4">{item.error}</p>
+          {onRetry && (
+            <button 
+              onClick={() => onRetry(item.id)}
+              className="px-4 py-2 bg-white dark:bg-red-900/40 text-red-600 dark:text-red-300 text-sm font-medium rounded-lg border border-red-200 dark:border-red-800/50 hover:bg-red-50 dark:hover:bg-red-900/60 transition-colors flex items-center"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Try Again
+            </button>
+          )}
+        </div>
       </div>
     );
   }
 
-  if (!item.response) return null;
-
   const { response } = item;
-  const interpretationText = response.interpretation || '';
-
-  // LAYOUT LOGIC
-  // If result has LaTeX parts or is very short, use Hero Mode.
-  const hasLatex = resultParts.some(p => p.type === 'latex');
-  const isShortResult = resultText.length < 120;
-  const useHeroMode = hasLatex || isShortResult;
+  if (!response) return null;
 
   return (
-    <div className="w-full max-w-5xl mx-auto mb-10 flex flex-col space-y-4">
+    <div className="w-full max-w-3xl mx-auto bg-white/90 dark:bg-slate-800/90 backdrop-blur-xl rounded-2xl shadow-xl shadow-indigo-500/5 dark:shadow-black/20 border border-slate-200 dark:border-slate-700 overflow-hidden transition-all duration-300 animate-fade-in-up">
       
-      {/* 1. QUERY & META HEADER */}
-      <div className="px-1 flex flex-col gap-1.5">
-        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight leading-snug break-words">
-              {item.query}
+      {/* Header / Interpretation */}
+      <div className="p-6 border-b border-slate-100 dark:border-slate-700/50">
+         <div className="flex items-start justify-between">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white leading-tight">
+              {response.interpretation || item.query}
             </h2>
-          </div>
-          
-          <div className="flex items-center space-x-2 shrink-0 pt-0.5">
-             {item.modelMode === 'pro' ? (
-               <div className="flex items-center px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 rounded-md text-[10px] uppercase font-bold tracking-wider border border-indigo-100 dark:border-indigo-800">
-                 <Brain className="w-3 h-3 mr-1" />
-                 Pro
-               </div>
-             ) : (
-               <div className="flex items-center px-2 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-md text-[10px] uppercase font-bold tracking-wider border border-amber-100 dark:border-amber-900/30">
-                 <Zap className="w-3 h-3 mr-1" />
-                 Flash
-               </div>
-             )}
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-            {item.attachedImage && (
-            <span className="inline-flex items-center px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[10px] font-medium text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-                <ImageIcon className="w-3 h-3 mr-1" />
-                Image Analysis
-            </span>
-            )}
-            {item.audioBase64 && (
-            <span className="inline-flex items-center px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[10px] font-medium text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-                <Mic className="w-3 h-3 mr-1" />
-                Voice Input
-            </span>
-            )}
-            <div className="flex items-center text-[10px] text-slate-400 dark:text-slate-500">
-                <span className="mr-1 opacity-70">Interpreted as:</span>
-                <LatexRenderer content={interpretationText} className="truncate max-w-[250px] italic" />
-            </div>
-        </div>
-      </div>
-
-      {/* 2. ADAPTIVE RESULT DISPLAY */}
-      {useHeroMode ? (
-        // === MODE A: HERO BOX (Calculator Style) ===
-        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md shadow-slate-200/40 dark:shadow-black/20 border border-slate-200 dark:border-slate-700 overflow-hidden transition-colors w-full group">
-          <div className="bg-slate-50/80 dark:bg-slate-800/80 px-4 py-2 border-b border-slate-100 dark:border-slate-700/50 flex justify-between items-center">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Result</span>
-            <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-               <button 
-                onClick={speakResult}
-                className="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                title="Read Aloud"
-              >
-                <Volume2 className="w-3.5 h-3.5" />
-              </button>
-              <button 
-                onClick={() => navigator.clipboard.writeText(resultText)}
-                className="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                title="Copy Result"
-              >
-                <Copy className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-          <div className="p-5 md:p-6 text-xl sm:text-2xl font-light text-slate-900 dark:text-slate-100 leading-relaxed">
-             {resultParts.map((part, idx) => (
-                <React.Fragment key={idx}>
-                   {part.type === 'latex' 
-                      ? <LatexRenderer content={part.content.startsWith('$$') ? part.content : `$$${part.content}$$`} />
-                      : <InlineMarkdown content={part.content} />
-                   }
-                </React.Fragment>
-             ))}
-          </div>
-        </div>
-      ) : (
-        // === MODE B: FLUID NARRATIVE (Article Style) ===
-        <div className="relative pl-4 border-l-2 border-indigo-200 dark:border-indigo-900/50 py-1">
-           <div className="text-base sm:text-lg text-slate-800 dark:text-slate-200 leading-relaxed">
-              {resultParts.map((part, idx) => (
-                <React.Fragment key={idx}>
-                   {part.type === 'latex' 
-                      ? <LatexRenderer content={`$${part.content}$`} />
-                      : <InlineMarkdown content={part.content} />
-                   }
-                </React.Fragment>
-             ))}
-           </div>
-           
-           <div className="flex space-x-2 mt-2 opacity-60 hover:opacity-100 transition-opacity">
-               <button onClick={speakResult} className="flex items-center space-x-1 text-[10px] text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
-                <Volume2 className="w-3 h-3" />
-                <span>Listen</span>
-              </button>
-              <button onClick={() => navigator.clipboard.writeText(resultText)} className="flex items-center space-x-1 text-[10px] text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
-                <Copy className="w-3 h-3" />
-                <span>Copy</span>
-              </button>
-           </div>
-        </div>
-      )}
-
-      {/* 3. VISUALIZATION */}
-      {response.chart && (
-        <div className="w-full">
-          <ChartVisualization config={response.chart} isDarkMode={isDarkMode} />
-        </div>
-      )}
-
-      {/* 4. DETAILED SECTIONS */}
-      <div className="flex flex-col space-y-3 w-full">
-        {response.sections && response.sections.map((section, idx) => {
-          // Skip first section if it duplicates result logic (heuristic)
-          if (!useHeroMode && idx === 0 && section.type === 'text' && section.content.includes(resultText.substring(0, 50))) {
-            return null;
-          }
-
-          const isCode = section.type === 'code';
-          return (
-            <div key={idx} className={`bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 md:p-5 transition-colors w-full`}>
-              <h3 className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                {section.title}
-              </h3>
-              {isCode ? (
-                <CodeBlock code={section.content} language={detectLanguage(section.content, section.title)} />
-              ) : section.type === 'list' ? (
-                <ul className="list-disc pl-4 space-y-1.5 text-sm text-slate-700 dark:text-slate-300">
-                  {section.content.split('\n').map((line, i) => (
-                    <li key={i} className="pl-1 leading-relaxed">
-                      <LatexRenderer content={line.replace(/^[•-]\s*/, '')} />
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <SectionMarkdownContent content={section.content} />
-              )}
-            </div>
-          );
-        })}
-      </div>
-      
-      {/* 5. SUGGESTIONS */}
-      {response.suggestions && response.suggestions.length > 0 && onSuggestionClick && (
-         <div className="w-full mt-1">
-            <h4 className="flex items-center text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2 ml-1">
-               <Lightbulb className="w-3 h-3 mr-1.5" />
-               Explore Further
-            </h4>
-            <div className="flex flex-wrap gap-2">
-               {response.suggestions.map((suggestion, idx) => (
-                  <button
-                     key={idx}
-                     onClick={() => onSuggestionClick(suggestion)}
-                     className="group flex items-center space-x-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 rounded-full text-xs text-slate-600 dark:text-slate-300 shadow-sm transition-all hover:shadow-md hover:text-indigo-600 dark:hover:text-indigo-400"
-                  >
-                     <span>{suggestion}</span>
-                     <ArrowRight className="w-3 h-3 opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
-                  </button>
-               ))}
+            <div className="flex items-center space-x-2">
+                <div className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider flex items-center ${item.modelMode === 'pro' ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'}`}>
+                    {item.modelMode === 'pro' ? <Brain className="w-3 h-3 mr-1" /> : <Zap className="w-3 h-3 mr-1" />}
+                    {item.modelMode === 'pro' ? 'PRO' : 'FLASH'}
+                </div>
             </div>
          </div>
-      )}
+         <p className="text-xs text-slate-400 mt-1 italic">
+            Interpreted as: {response.interpretation}
+         </p>
+      </div>
 
-      {/* 6. SOURCES */}
-      {response.sources && response.sources.length > 0 && (
-        <div className="w-full bg-slate-50 dark:bg-slate-800/30 rounded-xl px-4 py-3 border border-slate-100 dark:border-slate-800 transition-colors mt-1">
-          <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2 flex items-center">
-            <Sparkles className="w-3 h-3 mr-1.5" />
-            Sources
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            {response.sources.map((source, idx) => (
-              <a 
-                key={idx} 
-                href={source.uri} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="inline-flex items-center px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-[10px] text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors truncate max-w-[200px]"
-              >
-                <span className="truncate">{source.title}</span>
-                <ExternalLink className="w-2.5 h-2.5 ml-1.5 opacity-50 shrink-0" />
-              </a>
-            ))}
-          </div>
+      {/* Main Result */}
+      <div className="p-6 bg-indigo-50/50 dark:bg-indigo-900/10">
+         <div className="text-lg text-slate-800 dark:text-slate-100 leading-relaxed font-medium">
+            {response.result.map((part, idx) => {
+              if (part.type === 'latex') {
+                return <LatexRenderer key={idx} content={`$$${part.content}$$`} className="my-2 block" />;
+              } else {
+                // Use RobustMarkdown for main result text to handle potential nested block markdown and LaTeX
+                return <RobustMarkdown key={idx} content={part.content} />;
+              }
+            })}
+         </div>
+
+         {/* Audio/Copy Actions */}
+         <div className="flex items-center space-x-4 mt-4 pt-4 border-t border-indigo-100 dark:border-indigo-900/20 text-xs font-medium text-slate-500 dark:text-slate-400">
+             <button className="flex items-center hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                <Volume2 className="w-3.5 h-3.5 mr-1.5" />
+                Listen
+             </button>
+             <button 
+                onClick={() => navigator.clipboard.writeText(response.result.map(r => r.content).join(' '))}
+                className="flex items-center hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+             >
+                <Copy className="w-3.5 h-3.5 mr-1.5" />
+                Copy
+             </button>
+         </div>
+      </div>
+
+      {/* Chart */}
+      {response.chart && (
+        <div className="px-6 pb-6">
+           <ChartVisualization config={response.chart} isDarkMode={isDarkMode} />
         </div>
       )}
+
+      {/* Detailed Sections */}
+      {response.sections.length > 0 && (
+        <div className="px-6 pb-6 space-y-6">
+          {response.sections.map((section, idx) => (
+            <div key={idx} className="border-t border-slate-100 dark:border-slate-700/50 pt-4 first:border-0 first:pt-0">
+               <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-3 flex items-center">
+                  {section.title}
+               </h3>
+               
+               {section.type === 'code' ? (
+                 <CodeBlock code={section.content || ''} language={detectLanguage(section.content || '', section.title)} />
+               ) : section.type === 'table' && section.tableData ? (
+                 <TableSection data={section.tableData} />
+               ) : (
+                 <RobustMarkdown content={section.content || ''} />
+               )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Sources / Grounding */}
+      {response.sources && response.sources.length > 0 && (
+        <div className="px-6 py-4 bg-slate-50 dark:bg-black/20 border-t border-slate-200 dark:border-slate-700">
+           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Sources</p>
+           <div className="flex flex-wrap gap-2">
+              {response.sources.map((source, i) => (
+                <a 
+                  key={i} 
+                  href={source.uri} 
+                  target="_blank" 
+                  rel="noreferrer"
+                  className="flex items-center px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-300 dark:hover:border-indigo-700 transition-all shadow-sm"
+                >
+                  <ExternalLink className="w-3 h-3 mr-1.5" />
+                  <span className="truncate max-w-[150px]">{source.title}</span>
+                </a>
+              ))}
+           </div>
+        </div>
+      )}
+
+      {/* Suggestions */}
+      {response.suggestions && response.suggestions.length > 0 && onSuggestionClick && (
+        <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-gradient-to-r from-white to-slate-50 dark:from-slate-800 dark:to-slate-800/80">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center">
+               <Lightbulb className="w-3 h-3 mr-1.5" />
+               Explore Further
+            </p>
+            <div className="flex flex-wrap gap-2">
+               {response.suggestions.map((s, i) => (
+                 <button
+                   key={i}
+                   onClick={() => onSuggestionClick(s)}
+                   className="px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 text-xs font-medium hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors border border-indigo-100 dark:border-indigo-800"
+                 >
+                   {s}
+                   <ArrowRight className="w-3 h-3 inline ml-1 opacity-50" />
+                 </button>
+               ))}
+            </div>
+        </div>
+      )}
+
     </div>
   );
 };

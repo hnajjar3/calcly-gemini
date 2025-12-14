@@ -13,10 +13,16 @@ export interface ChartConfig {
   seriesKeys: string[]; // Keys in data to plot (e.g., ["y", "z"] for multiple lines)
 }
 
+export interface TableData {
+  headers: string[];
+  rows: string[][];
+}
+
 export interface Section {
   title: string;
-  content: string; // Can be markdown-like text
-  type: 'text' | 'list' | 'code';
+  content?: string; 
+  type: 'text' | 'list' | 'code' | 'table';
+  tableData?: TableData;
 }
 
 export interface Source {

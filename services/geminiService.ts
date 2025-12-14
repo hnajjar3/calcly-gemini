@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { SolverResponse, ModelMode } from "../types";
 
@@ -35,12 +36,12 @@ const schemaDefinition = `
     "interpretation": { "type": "STRING", "description": "Concise restatement of query" },
     "result": {
       "type": "ARRAY",
-      "description": "The answer broken down into parts to separate text from math. Use 'latex' for math equations, 'markdown' for text and currency.",
+      "description": "The answer broken down into parts. You can mix text and math.",
       "items": {
         "type": "OBJECT",
         "properties": {
           "type": { "type": "STRING", "enum": ["markdown", "latex"] },
-          "content": { "type": "STRING", "description": "The content string. For markdown, do NOT use $ delimiters." }
+          "content": { "type": "STRING", "description": "Content string." }
         },
         "required": ["type", "content"]
       }
@@ -52,8 +53,22 @@ const schemaDefinition = `
         "type": "OBJECT",
         "properties": {
           "title": { "type": "STRING" },
-          "content": { "type": "STRING" },
-          "type": { "type": "STRING", "enum": ["text", "list", "code"] }
+          "type": { "type": "STRING", "enum": ["text", "list", "code", "table"] },
+          "content": { "type": "STRING", "description": "For text/list/code. Markdown allowed." },
+          "tableData": {
+            "type": "OBJECT",
+            "description": "Required for type 'table'.",
+            "properties": {
+              "headers": { "type": "ARRAY", "items": { "type": "STRING" } },
+              "rows": { 
+                "type": "ARRAY", 
+                "items": { 
+                  "type": "ARRAY", 
+                  "items": { "type": "STRING", "description": "Cell content. Can include LaTeX wrapped in $...$." } 
+                } 
+              }
+            }
+          }
         }
       }
     },
@@ -136,18 +151,14 @@ export const solveQuery = async (
     
     CRITICAL RULES:
     1.  **Structure**: The 'result' field is an ARRAY of objects. 
-        - Use type 'markdown' for text, bolding (**text**), and CURRENCY ($100). **Do NOT** put LaTeX delimiters ($) in 'markdown' parts.
-        - Use type 'latex' ONLY for mathematical expressions (integrals, fractions, greek letters). **Do NOT** include currency in 'latex' parts.
-        - Example: [{type: 'markdown', content: 'The price is '}, {type: 'markdown', content: '$500'}, {type: 'markdown', content: '.'}]
-    2.  **Brevity**: 'sections' should only be used for necessary details (steps, code, lists). Keep section content focused.
-    3.  **Interpretation**: Briefly clarify how you interpreted the query.
-    4.  **Visualization**: If the query involves math functions, statistical comparisons, or trends, YOU MUST generate a 'chart' object.
-    5.  **Accuracy**: Use the googleSearch tool if the query requires up-to-date information.
-    6.  **Format**: Return ONLY valid raw JSON matching the schema below.
-    7.  **Math**: In 'latex' parts or 'sections', use LaTeX formatting. Wrap block math in double dollar signs ($$...$$) inside string fields in sections.
-    8.  **JSON & Escaping**: All backslashes in LaTeX must be double-escaped (e.g., "\\\\approx").
-    9.  **Multimodal**: Analyze images and audio if provided.
-    10. **Suggestions**: Generate 3-5 "smart actions".
+        - You can mix Markdown text and LaTeX math in 'markdown' parts.
+        - **IMPORTANT**: If you use LaTeX math, YOU MUST wrap it in single \`$\` (inline) or double \`$$\` (block).
+        - **CRITICAL**: If you use Currency (e.g. $50), you **MUST** escape the dollar sign like \`\\$50\`.
+    2.  **Tables**: For data comparisons, nutritional info, or specs, USE type 'table' in 'sections' and populate 'tableData'.
+    3.  **Visualization**: If the query involves math functions, statistical comparisons, or trends, YOU MUST generate a 'chart' object.
+    4.  **Accuracy**: Use the googleSearch tool if the query requires up-to-date information.
+    5.  **Format**: Return ONLY valid raw JSON matching the schema below.
+    6.  **JSON & Escaping**: All backslashes in LaTeX must be double-escaped (e.g., "\\\\approx").
     
     SCHEMA:
     ${schemaDefinition}
@@ -263,7 +274,6 @@ export const solveQuery = async (
     // Safety Defaults
     if (!parsed.result) parsed.result = [];
     if (typeof parsed.result === 'string') {
-        // Legacy/Error recovery: if model returned string despite prompt
         parsed.result = [{ type: 'markdown', content: parsed.result }];
     }
     if (!parsed.interpretation) parsed.interpretation = "";
@@ -300,20 +310,6 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
       "end": "string (optional)",
       "preferredEngine": "nerdamer" | "algebrite" (optional)
     }
-
-    RULES:
-    1. **expression**: Must be a string. If the input is a matrix like [[1,2],[3,4]], return it as the string "[[1,2],[3,4]]". Do not return a JSON array.
-    2. **operation**: 
-       - "determinant" for "det", "determinant".
-       - "invert" for "inverse", "invert".
-       - "solve" for equation solving (e.g. x^2 + 2x = 0).
-    3. **variable**: Infer from context (e.g., "integrate x^2" -> "x"). Default to "x" if ambiguous.
-    4. **start/end**: Use for definite integrals, sums, or limits.
-    
-    EXAMPLES:
-    - "Integrate x^2 from 0 to 5" -> {"operation": "integrate", "expression": "x^2", "variable": "x", "start": "0", "end": "5"}
-    - "Determinant of [[1,2],[3,4]]" -> {"operation": "determinant", "expression": "[[1,2],[3,4]]"}
-    - "Solve x^2 - 4 = 0" -> {"operation": "solve", "expression": "x^2 - 4 = 0", "variable": "x"}
   `;
 
   const response = await ai.models.generateContent({
@@ -341,7 +337,6 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
     }
     
     if (!parsed.expression) {
-         // Fallback if model fails to extract expression
          parsed.expression = query;
     }
 
@@ -355,29 +350,8 @@ export const parseNumericalExpression = async (query: string): Promise<string> =
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
   const systemInstruction = `
-    You are a Math.js Translator. Your goal is to convert natural language queries into valid Math.js syntax for execution.
-
-    Target Library: Math.js (supports arithmetic, complex numbers, matrices, units, statistics, probability).
-
-    OUTPUT JSON SCHEMA:
-    {
-      "expression": "string"
-    }
-
-    EXAMPLES:
-    - Input: "calculate the mean of 1, 2, 3, and 4" -> Output: {"expression": "mean([1, 2, 3, 4])"}
-    - Input: "convert 50 miles to kilometers" -> Output: {"expression": "50 mile to km"}
-    - Input: "determinant of matrix [[1,2],[3,4]]" -> Output: {"expression": "det([[1,2],[3,4]])"}
-    - Input: "sin of 90 degrees" -> Output: {"expression": "sin(90 deg)"}
-    - Input: "1 plus 2" -> Output: {"expression": "1 + 2"}
-    - Input: "set a equals 10" -> Output: {"expression": "a = 10"}
-    - Input: "complex number 2 plus 3i times 4" -> Output: {"expression": "(2 + 3i) * 4"}
-
-    RULES:
-    1. Return ONLY valid Math.js expression string within the JSON.
-    2. Do not solve the problem. Only translate syntax.
-    3. If input is already valid math, return it as is.
-    4. For units, use math.js unit syntax (e.g. "deg", "cm", "inch", "kg").
+    You are a Math.js Translator. Your goal is to convert natural language queries into valid Math.js syntax.
+    OUTPUT JSON SCHEMA: { "expression": "string" }
   `;
 
   const response = await ai.models.generateContent({
@@ -396,6 +370,6 @@ export const parseNumericalExpression = async (query: string): Promise<string> =
     const parsed = JSON.parse(jsonText);
     return parsed.expression || query;
   } catch (e) {
-    return query; // Fallback to raw input
+    return query; 
   }
 };
