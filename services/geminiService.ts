@@ -41,16 +41,23 @@ const handleGeminiError = (error: any): never => {
   
   let msg = error.message || error.toString();
   
-  // Handle structured error objects coming directly from the API response
-  if (error.error && error.error.message) {
-      msg = error.error.message;
+  // Handle structured error objects coming directly from the API response (Raw JSON)
+  // Example: {"error":{"code":429,"message":"...","status":"RESOURCE_EXHAUSTED"}}
+  if (error.error) {
+      if (error.error.message) {
+          msg = error.error.message;
+      }
+      // Explicitly check for Quota codes in the raw error object
+      if (error.error.code === 429 || error.error.status === 'RESOURCE_EXHAUSTED') {
+          msg = "Quota exceeded"; 
+      }
   }
 
   const lowerMsg = msg.toLowerCase();
 
   // Handle Quota/Rate Limits (429)
   if (lowerMsg.includes('429') || lowerMsg.includes('quota') || lowerMsg.includes('resource_exhausted')) {
-    throw new Error("⚠️ Rate Limit Exceeded. You have hit the API quota. Please wait a moment and try again, or switch to 'Flash' mode for lower resource usage.");
+    throw new Error("⚠️ API Quota Exceeded. You have reached the usage limit for your API key. Please try again later or check your billing details.");
   }
   
   // Handle Auth Errors (400/403)
@@ -240,13 +247,16 @@ export const solveQuery = async (
   if (mode === 'flash') {
     systemInstruction += `
     
-    [STRICT MODE: FLASH - EXTREME CONCISENESS]
-    1. **NO FILLER**: Output ONLY the answer. No "Here is the result", "Sure", or conversational text.
-    2. **LENGTH**: The 'result' MUST be less than 50 words unless it involves code or data.
-    3. **STRUCTURE**: Avoid complex 'sections'. Use 'sections' ONLY for Code Blocks or Tables. Put all text in 'result'.
-    4. **CHARTS**: Do NOT generate charts in Flash mode. Focus on text/data.
-    5. **INTERPRETATION**: Max 3-5 words.
-    6. **FORMATTING**: Use very simple Markdown. Avoid complex nested lists or formatting that breaks easily.
+    [STRICT MODE: FLASH]
+    1. **EXTREME CONCISENESS**: Output ONLY the final answer. No filler words. Max 1-2 sentences.
+    2. **SIMPLICITY**: Do not use complex Markdown or nested structures. Use plain text where possible.
+    3. **STRUCTURE**: 
+       - 'result': The short text answer (max 40 words).
+       - 'sections': KEEP EMPTY [] unless a code block is strictly required.
+       - 'chart': DO NOT GENERATE charts.
+       - 'suggestions': Max 2 items.
+    4. **INTERPRETATION**: Max 3-5 words.
+    5. **NO CONVERSATION**: Do not say "Here is the answer". Just give the answer.
     `;
   } else {
      systemInstruction += `
