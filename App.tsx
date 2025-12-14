@@ -26,6 +26,9 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  
+  // Ref to prevent double submission in Strict Mode
+  const hasAutoSubmitted = useRef(false);
 
   // Initialize theme based on system preference
   useEffect(() => {
@@ -70,6 +73,8 @@ const App: React.FC = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
     setIsProcessing(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Also clear URL params if present to clean state
+    window.history.replaceState({}, '', window.location.pathname);
   };
 
   // Audio Recording Logic
@@ -198,6 +203,28 @@ const App: React.FC = () => {
   const handleSuggestionClick = (suggestion: string, parentItem: HistoryItem) => {
     handleSubmit(undefined, suggestion, undefined, parentItem);
   };
+
+  // Handle URL Query Params (Deep Linking)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlQuery = params.get('q');
+    
+    if (urlQuery && !hasAutoSubmitted.current) {
+        hasAutoSubmitted.current = true;
+        // Optionally allow mode selection via URL params as well
+        const modeParam = params.get('mode');
+        if (modeParam === 'flash') {
+            setModelMode('flash');
+        }
+        
+        // Slight delay to ensure hydration/state is ready
+        setTimeout(() => {
+            handleSubmit(undefined, urlQuery);
+        }, 100);
+    }
+    // We intentionally omit handleSubmit from deps to run this only once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col text-slate-900 dark:text-slate-100 font-sans transition-colors duration-300">
