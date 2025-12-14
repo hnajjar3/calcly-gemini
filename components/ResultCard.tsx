@@ -152,13 +152,16 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSugge
   if (!item.response) return null;
 
   const { response } = item;
+  // SAFEGUARD: Ensure strings are not undefined to prevent crashes
+  const resultText = response.result || '';
+  const interpretationText = response.interpretation || '';
 
   // LAYOUT LOGIC:
   // Determine if we should show the "Hero Box" (for math/short facts)
   // or the "Fluid Narrative" (for long explanations/history/coding)
-  const isMathResult = /[\$\\]/.test(response.result); // Contains LaTeX delimiters
-  const isShortResult = response.result.length < 120;
-  const isCodeOrList = response.result.includes('```') || response.result.includes('\n-');
+  const isMathResult = /[\$\\]/.test(resultText); // Contains LaTeX delimiters
+  const isShortResult = resultText.length < 120;
+  const isCodeOrList = resultText.includes('```') || resultText.includes('\n-');
   
   // Force hero mode if it's math or short, UNLESS it looks like code block
   const useHeroMode = (isMathResult || isShortResult) && !isCodeOrList;
@@ -207,7 +210,7 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSugge
             {/* Interpretation is subtle now */}
             <div className="flex items-center text-[10px] text-slate-400 dark:text-slate-500">
                 <span className="mr-1 opacity-70">Interpreted as:</span>
-                <LatexRenderer content={response.interpretation} className="truncate max-w-[250px] italic" />
+                <LatexRenderer content={interpretationText} className="truncate max-w-[250px] italic" />
             </div>
         </div>
       </div>
@@ -227,7 +230,7 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSugge
                 <Volume2 className="w-3.5 h-3.5" />
               </button>
               <button 
-                onClick={() => navigator.clipboard.writeText(response.result)}
+                onClick={() => navigator.clipboard.writeText(resultText)}
                 className="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                 title="Copy Result"
               >
@@ -237,7 +240,7 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSugge
           </div>
           <div className="p-5 md:p-6">
             <div className="text-xl sm:text-2xl font-light text-slate-900 dark:text-slate-100 leading-tight">
-              <LatexRenderer content={response.result} />
+              <LatexRenderer content={resultText} />
             </div>
           </div>
         </div>
@@ -245,7 +248,7 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSugge
         // === MODE B: FLUID NARRATIVE (Article Style) ===
         <div className="relative pl-4 border-l-2 border-indigo-200 dark:border-indigo-900/50 py-1">
            <div className="text-base sm:text-lg text-slate-800 dark:text-slate-200 leading-relaxed">
-             <MarkdownContent content={response.result} />
+             <MarkdownContent content={resultText} />
            </div>
            
            {/* Floating actions for narrative mode */}
@@ -258,7 +261,7 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSugge
                 <span>Listen</span>
               </button>
               <button 
-                onClick={() => navigator.clipboard.writeText(response.result)}
+                onClick={() => navigator.clipboard.writeText(resultText)}
                 className="flex items-center space-x-1 text-[10px] text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
               >
                 <Copy className="w-3 h-3" />
@@ -278,9 +281,9 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSugge
       {/* 4. DETAILED SECTIONS */}
       {/* If Narrative Mode, and the first section is basically a duplicate of result, we skip it to reduce noise */}
       <div className="flex flex-col space-y-3 w-full">
-        {response.sections.map((section, idx) => {
+        {response.sections && response.sections.map((section, idx) => {
           // Heuristic: If we are in narrative mode, and the first text section is extremely similar to the result, skip it
-          if (!useHeroMode && idx === 0 && section.type === 'text' && section.content.includes(response.result.substring(0, 50))) {
+          if (!useHeroMode && idx === 0 && section.type === 'text' && section.content.includes(resultText.substring(0, 50))) {
             return null;
           }
 

@@ -288,6 +288,11 @@ export const solveQuery = async (
         });
     }
 
+    // Safety Defaults to prevent UI crashes if model returns partial object
+    if (!parsed.result) parsed.result = "";
+    if (!parsed.interpretation) parsed.interpretation = "";
+    if (!parsed.sections) parsed.sections = [];
+
     return parsed;
   } catch (error) {
     console.error("Gemini API Error:", error);

@@ -8,6 +8,8 @@ interface Props {
 }
 
 export const LatexRenderer: React.FC<Props> = ({ content, className = '' }) => {
+  if (!content) return null;
+
   // Split content by $$...$$ for block math and $...$ for inline math
   const parts = content.split(/(\$\$[\s\S]*?\$\$|\$[^$]*?\$)/g);
 
