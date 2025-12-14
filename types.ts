@@ -5,7 +5,7 @@ export interface ChartDataPoint {
 }
 
 export interface ChartConfig {
-  type: 'line' | 'bar' | 'area' | 'scatter';
+  type: 'line' | 'bar' | 'area' | 'scatter' | 'pie';
   title: string;
   xLabel: string;
   yLabel: string;

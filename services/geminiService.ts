@@ -75,7 +75,7 @@ const schemaDefinition = `
     "chart": {
       "type": "OBJECT",
       "properties": {
-        "type": { "type": "STRING", "enum": ["line", "bar", "area", "scatter"] },
+        "type": { "type": "STRING", "enum": ["line", "bar", "area", "scatter", "pie"] },
         "title": { "type": "STRING" },
         "xLabel": { "type": "STRING" },
         "yLabel": { "type": "STRING" },
@@ -156,6 +156,9 @@ export const solveQuery = async (
         - **CRITICAL**: If you use Currency (e.g. $50), you **MUST** escape the dollar sign like \`\\$50\`.
     2.  **Tables**: For data comparisons, nutritional info, or specs, USE type 'table' in 'sections' and populate 'tableData'.
     3.  **Visualization**: If the query involves math functions, statistical comparisons, or trends, YOU MUST generate a 'chart' object.
+        - Use 'bar' for comparisons between items.
+        - Use 'line' for trends over time.
+        - Use 'pie' for compositions or part-to-whole (e.g. nutrient breakdown, market share).
     4.  **Accuracy**: Use the googleSearch tool if the query requires up-to-date information.
     5.  **Format**: Return ONLY valid raw JSON matching the schema below.
     6.  **JSON & Escaping**: All backslashes in LaTeX must be double-escaped (e.g., "\\\\approx").

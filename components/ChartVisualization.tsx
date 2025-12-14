@@ -1,3 +1,4 @@
+
 import React from 'react';
 import {
   LineChart,
@@ -6,6 +7,9 @@ import {
   Bar,
   AreaChart,
   Area,
+  PieChart,
+  Pie,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -27,6 +31,9 @@ const THEME_COLORS = [
   { main: '#10b981', gradient: ['#34d399', '#059669'] }, // Emerald
   { main: '#f59e0b', gradient: ['#fbbf24', '#d97706'] }, // Amber
   { main: '#0ea5e9', gradient: ['#38bdf8', '#0284c7'] }, // Sky
+  { main: '#8b5cf6', gradient: ['#a78bfa', '#7c3aed'] }, // Violet
+  { main: '#f43f5e', gradient: ['#fb7185', '#e11d48'] }, // Rose
+  { main: '#84cc16', gradient: ['#a3e635', '#65a30d'] }, // Lime
 ];
 
 export const ChartVisualization: React.FC<Props> = ({ config, isDarkMode }) => {
@@ -87,6 +94,46 @@ export const ChartVisualization: React.FC<Props> = ({ config, isDarkMode }) => {
 
   const renderChart = () => {
     switch (config.type) {
+      case 'pie':
+        const valueKey = config.seriesKeys[0] || 'value';
+        return (
+          <PieChart>
+             <Pie
+              data={config.data}
+              cx="50%"
+              cy="50%"
+              labelLine={false}
+              // Donut style with rounded ends
+              innerRadius={60}
+              outerRadius={85}
+              paddingAngle={5}
+              dataKey={valueKey}
+              nameKey="x"
+              cornerRadius={6}
+            >
+              {config.data.map((entry, index) => (
+                <Cell 
+                  key={`cell-${index}`} 
+                  fill={THEME_COLORS[index % THEME_COLORS.length].main} 
+                  stroke={isDarkMode ? '#1e293b' : '#fff'}
+                  strokeWidth={2}
+                />
+              ))}
+            </Pie>
+            <Tooltip 
+                contentStyle={tooltipStyle} 
+                itemStyle={{ color: isDarkMode ? '#e2e8f0' : '#1e293b', paddingBottom: 2 }}
+                cursor={false}
+            />
+            <Legend 
+                wrapperStyle={{ paddingTop: '16px', fontSize: '11px', fontWeight: 500, opacity: 0.8 }} 
+                iconType="circle"
+                verticalAlign="bottom" 
+                align="center"
+            />
+          </PieChart>
+        );
+
       case 'bar':
         return (
           <BarChart data={config.data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
