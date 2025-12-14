@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { HistoryItem } from '../types';
+import { HistoryItem, ResultPart } from '../types';
 import { ChartVisualization } from './ChartVisualization';
 import { LatexRenderer } from './LatexRenderer';
 import { Copy, Sparkles, AlertTriangle, Zap, Brain, Image as ImageIcon, ExternalLink, RefreshCw, ArrowRight, Lightbulb, Mic, Volume2 } from '../components/icons';
@@ -7,7 +7,6 @@ import { Copy, Sparkles, AlertTriangle, Zap, Brain, Image as ImageIcon, External
 // Access global KaTeX, Prism, and Marked loaded via script tags
 declare const katex: any;
 declare const Prism: any;
-declare const marked: any;
 
 interface Props {
   item: HistoryItem;
@@ -57,38 +56,67 @@ const CodeBlock: React.FC<{ code: string; language?: string }> = ({ code, langua
   );
 };
 
-// Component to render Markdown + LaTeX
-const MarkdownContent: React.FC<{ content: string }> = ({ content }) => {
-  const placeholders: string[] = [];
-  const contentWithPlaceholders = content.replace(/(\$\$[\s\S]*?\$\$|\$[^$]*?\$)/g, (match) => {
-    placeholders.push(match);
-    return `%%%LATEX_PLACEHOLDER_${placeholders.length - 1}%%%`;
+// Helper for inline markdown in the Main Result (lightweight)
+const InlineMarkdown: React.FC<{ content: string }> = ({ content }) => {
+  // Use marked for basic inline styling like bold/italic, but keep it simple
+  let html = content;
+  const markedLib = (window as any).marked;
+  if (markedLib) {
+     try {
+         html = markedLib.parseInline(content, { breaks: true, gfm: true });
+     } catch (e) {
+         html = content;
+     }
+  }
+  return <span dangerouslySetInnerHTML={{ __html: html }} />;
+};
+
+// Component to render robust Markdown + LaTeX for SECTIONS
+const SectionMarkdownContent: React.FC<{ content: string }> = ({ content }) => {
+  let processed = content;
+  const currencyPlaceholders: string[] = [];
+  const latexPlaceholders: string[] = [];
+
+  // 1. Protect Currency
+  processed = processed.replace(/(\$(?:\d{1,3}(?:,\d{3})*|(?:\d+))(?:\.\d+)?)/g, (match) => {
+    currencyPlaceholders.push(match);
+    return `%%%CURRENCY_PLACEHOLDER_${currencyPlaceholders.length - 1}%%%`;
   });
 
+  // 2. Extract LaTeX
+  const latexRegex = /(\$\$[\s\S]*?\$\$|(?<!\\)\$(?!\s)(?:[^$\n]|\\\$)*?(?<!\s)(?<!\\)\$)/g;
+  processed = processed.replace(latexRegex, (match) => {
+    latexPlaceholders.push(match);
+    return `%%%LATEX_PLACEHOLDER_${latexPlaceholders.length - 1}%%%`;
+  });
+
+  // 3. Restore Currency
+  processed = processed.replace(/%%%CURRENCY_PLACEHOLDER_(\d+)%%%/g, (_, index) => {
+    return currencyPlaceholders[parseInt(index)];
+  });
+
+  // 4. Markdown Parse
   let html = '';
-  if (typeof marked !== 'undefined') {
+  const markedLib = (window as any).marked;
+  if (markedLib) {
     try {
-      html = marked.parse(contentWithPlaceholders);
+      html = markedLib.parse(processed, { breaks: true, gfm: true });
     } catch (e) {
-      html = contentWithPlaceholders;
+      html = processed;
     }
   } else {
-    html = contentWithPlaceholders;
+    html = processed;
   }
 
+  // 5. Restore LaTeX
   const htmlWithLatex = html.replace(/%%%LATEX_PLACEHOLDER_(\d+)%%%/g, (_, index) => {
-    const latex = placeholders[parseInt(index)];
+    const latex = latexPlaceholders[parseInt(index)];
     if (typeof katex !== 'undefined') {
       try {
         const isBlock = latex.startsWith('$$');
         const math = isBlock ? latex.slice(2, -2) : latex.slice(1, -1);
-        return katex.renderToString(math, { 
-          displayMode: isBlock, 
-          throwOnError: false 
-        });
-      } catch (e) {
-        return latex;
-      }
+        return katex.renderToString(math, { displayMode: isBlock, throwOnError: false });
+      } catch (e) { return latex; }
     }
     return latex;
   });
@@ -102,10 +130,14 @@ const MarkdownContent: React.FC<{ content: string }> = ({ content }) => {
 };
 
 export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSuggestionClick }) => {
+  const resultParts = item.response?.result || [];
+  
+  // Reconstruct plain text for clipboard/TTS
+  const resultText = resultParts.map(p => p.content).join('');
+
   const speakResult = () => {
-    if (!item.response?.result) return;
-    let text = item.response.result.replace(/\$\$/g, '').replace(/\$/g, '');
-    const utterance = new SpeechSynthesisUtterance(text);
+    if (!resultText) return;
+    const utterance = new SpeechSynthesisUtterance(resultText);
     window.speechSynthesis.speak(utterance);
   };
 
@@ -152,19 +184,13 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSugge
   if (!item.response) return null;
 
   const { response } = item;
-  // SAFEGUARD: Ensure strings are not undefined to prevent crashes
-  const resultText = response.result || '';
   const interpretationText = response.interpretation || '';
 
-  // LAYOUT LOGIC:
-  // Determine if we should show the "Hero Box" (for math/short facts)
-  // or the "Fluid Narrative" (for long explanations/history/coding)
-  const isMathResult = /[\$\\]/.test(resultText); // Contains LaTeX delimiters
+  // LAYOUT LOGIC
+  // If result has LaTeX parts or is very short, use Hero Mode.
+  const hasLatex = resultParts.some(p => p.type === 'latex');
   const isShortResult = resultText.length < 120;
-  const isCodeOrList = resultText.includes('```') || resultText.includes('\n-');
-  
-  // Force hero mode if it's math or short, UNLESS it looks like code block
-  const useHeroMode = (isMathResult || isShortResult) && !isCodeOrList;
+  const useHeroMode = hasLatex || isShortResult;
 
   return (
     <div className="w-full max-w-5xl mx-auto mb-10 flex flex-col space-y-4">
@@ -193,7 +219,6 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSugge
           </div>
         </div>
 
-        {/* Sub-meta tags */}
         <div className="flex flex-wrap items-center gap-2">
             {item.attachedImage && (
             <span className="inline-flex items-center px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[10px] font-medium text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
@@ -207,7 +232,6 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSugge
                 Voice Input
             </span>
             )}
-            {/* Interpretation is subtle now */}
             <div className="flex items-center text-[10px] text-slate-400 dark:text-slate-500">
                 <span className="mr-1 opacity-70">Interpreted as:</span>
                 <LatexRenderer content={interpretationText} className="truncate max-w-[250px] italic" />
@@ -238,32 +262,37 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSugge
               </button>
             </div>
           </div>
-          <div className="p-5 md:p-6">
-            <div className="text-xl sm:text-2xl font-light text-slate-900 dark:text-slate-100 leading-tight">
-              <LatexRenderer content={resultText} />
-            </div>
+          <div className="p-5 md:p-6 text-xl sm:text-2xl font-light text-slate-900 dark:text-slate-100 leading-relaxed">
+             {resultParts.map((part, idx) => (
+                <React.Fragment key={idx}>
+                   {part.type === 'latex' 
+                      ? <LatexRenderer content={part.content.startsWith('$$') ? part.content : `$$${part.content}$$`} />
+                      : <InlineMarkdown content={part.content} />
+                   }
+                </React.Fragment>
+             ))}
           </div>
         </div>
       ) : (
         // === MODE B: FLUID NARRATIVE (Article Style) ===
         <div className="relative pl-4 border-l-2 border-indigo-200 dark:border-indigo-900/50 py-1">
            <div className="text-base sm:text-lg text-slate-800 dark:text-slate-200 leading-relaxed">
-             <MarkdownContent content={resultText} />
+              {resultParts.map((part, idx) => (
+                <React.Fragment key={idx}>
+                   {part.type === 'latex' 
+                      ? <LatexRenderer content={`$${part.content}$`} />
+                      : <InlineMarkdown content={part.content} />
+                   }
+                </React.Fragment>
+             ))}
            </div>
            
-           {/* Floating actions for narrative mode */}
            <div className="flex space-x-2 mt-2 opacity-60 hover:opacity-100 transition-opacity">
-               <button 
-                onClick={speakResult}
-                className="flex items-center space-x-1 text-[10px] text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-              >
+               <button onClick={speakResult} className="flex items-center space-x-1 text-[10px] text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
                 <Volume2 className="w-3 h-3" />
                 <span>Listen</span>
               </button>
-              <button 
-                onClick={() => navigator.clipboard.writeText(resultText)}
-                className="flex items-center space-x-1 text-[10px] text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-              >
+              <button onClick={() => navigator.clipboard.writeText(resultText)} className="flex items-center space-x-1 text-[10px] text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
                 <Copy className="w-3 h-3" />
                 <span>Copy</span>
               </button>
@@ -279,24 +308,19 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSugge
       )}
 
       {/* 4. DETAILED SECTIONS */}
-      {/* If Narrative Mode, and the first section is basically a duplicate of result, we skip it to reduce noise */}
       <div className="flex flex-col space-y-3 w-full">
         {response.sections && response.sections.map((section, idx) => {
-          // Heuristic: If we are in narrative mode, and the first text section is extremely similar to the result, skip it
+          // Skip first section if it duplicates result logic (heuristic)
           if (!useHeroMode && idx === 0 && section.type === 'text' && section.content.includes(resultText.substring(0, 50))) {
             return null;
           }
 
           const isCode = section.type === 'code';
           return (
-            <div 
-              key={idx} 
-              className={`bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 md:p-5 transition-colors w-full`}
-            >
+            <div key={idx} className={`bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 md:p-5 transition-colors w-full`}>
               <h3 className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
                 {section.title}
               </h3>
-              
               {isCode ? (
                 <CodeBlock code={section.content} language={detectLanguage(section.content, section.title)} />
               ) : section.type === 'list' ? (
@@ -308,7 +332,7 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSugge
                   ))}
                 </ul>
               ) : (
-                <MarkdownContent content={section.content} />
+                <SectionMarkdownContent content={section.content} />
               )}
             </div>
           );

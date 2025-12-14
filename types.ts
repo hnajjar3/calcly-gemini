@@ -24,9 +24,14 @@ export interface Source {
   uri: string;
 }
 
+export interface ResultPart {
+  type: 'text' | 'markdown' | 'latex';
+  content: string;
+}
+
 export interface SolverResponse {
   interpretation: string; // How the AI understood the query (e.g. "Plot of sin(x)")
-  result: string; // The primary short answer
+  result: ResultPart[]; // Structured answer separating Text/Markdown from Math/LaTeX
   confidenceScore: number; // 0-1
   sections: Section[]; // Detailed breakdown
   chart?: ChartConfig; // Optional visualization

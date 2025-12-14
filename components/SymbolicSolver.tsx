@@ -26,6 +26,7 @@ const getNerdamer = () => {
 
 // Helper to convert array syntax [[1,2],[3,4]] to nerdamer "matrix([1,2],[3,4])"
 const formatMatrixForNerdamer = (expr: string): string => {
+  if (typeof expr !== 'string') return String(expr || '');
   const clean = expr.replace(/\s/g, '');
   if (clean.startsWith('[[')) {
     // Basic regex transform: [[a,b],[c,d]] -> matrix([a,b],[c,d])
@@ -38,12 +39,14 @@ const formatMatrixForNerdamer = (expr: string): string => {
 
 // Helper to convert array syntax [[1,2],[3,4]] to Algebrite syntax
 const formatMatrixForAlgebrite = (expr: string): string => {
+  if (typeof expr !== 'string') return String(expr || '');
   // Algebrite accepts square brackets: [[1,2],[3,4]]
   return expr.replace(/\s/g, '');
 };
 
 // Custom formatter to turn string list [[1,2],[3,4]] into LaTeX bmatrix
 const formatMatrixToLatex = (str: string): string => {
+  if (typeof str !== 'string') return '';
   // Check for pattern [[...],[...]]
   // Allow spaces, newlines, fractions, negative numbers
   // Using [\s\S]* to match across newlines if necessary
@@ -62,11 +65,21 @@ const formatMatrixToLatex = (str: string): string => {
           // Split by comma
           return content.split(',').map(val => {
               const cleaned = val.trim().replace(/\*/g, '');
-              // Convert simple fractions a/b to \frac{a}{b}
+              // Convert simple fractions a/b to decimal with 3-4 places
               if (/^-?\d+\/\d+$/.test(cleaned)) {
-                  const [n, d] = cleaned.split('/');
-                  return `\\frac{${n}}{${d}}`;
+                  const [n, d] = cleaned.split('/').map(Number);
+                  if (d !== 0) {
+                      return parseFloat((n / d).toFixed(4)).toString();
+                  }
               }
+              // Attempt to eval scalar math if possible
+              try {
+                 const f = parseFloat(cleaned);
+                 if (!isNaN(f) && cleaned.includes('.')) {
+                     return parseFloat(f.toFixed(4)).toString();
+                 }
+              } catch(e) {}
+              
               return cleaned;
           }).join(' & ');
         });
@@ -225,15 +238,33 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                 return false;
             }
 
-            finalLatex = evaluated.toTeX();
-            setUsedEngine('Nerdamer');
+            // ATTEMPT DECIMAL RESOLUTION FOR SCALAR RESULTS
+            let decimalVal: number | null = null;
             
+            // 1. Try internal decimals (covers irrational like sqrt(5))
             try {
-               const dec = evaluated.text('decimals');
-               if (dec && !isNaN(parseFloat(dec)) && dec.length < 20) {
-                   setDecimalResult(dec);
-               }
+                const decStr = evaluated.text('decimals');
+                if (/^-?\d*\.?\d+(e[-+]?\d+)?$/.test(decStr)) {
+                    decimalVal = parseFloat(decStr);
+                }
             } catch(e) {}
+
+            // 2. Try simple fraction
+            if (decimalVal === null && /^-?\d+\/\d+$/.test(resultString)) {
+                const [n, d] = resultString.split('/').map(Number);
+                if (d !== 0) decimalVal = n/d;
+            }
+
+            if (decimalVal !== null && !isNaN(decimalVal) && isFinite(decimalVal)) {
+                // Formatting to 3-4 decimal places, stripping trailing zeros
+                finalLatex = parseFloat(decimalVal.toFixed(4)).toString();
+            } else {
+                // Fallback to Symbolic TeX (matrices, algebraic expressions)
+                finalLatex = evaluated.toTeX();
+            }
+
+            setUsedEngine('Nerdamer');
+            setDecimalResult(null); // Clear secondary result since main is potentially decimal now
 
             return true;
 
@@ -306,32 +337,45 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                  return false;
               }
               
-              // MATRIX DISPLAY
-              if (/^\[\s*\[/.test(res)) {
-                   finalLatex = formatMatrixToLatex(res);
-                   addLog(`Formatted Matrix LaTeX: ${finalLatex}`);
+              let isRationalDecimal = false;
+
+              // TRY DECIMAL RESOLUTION FIRST
+              // Algebrite handles 'float(...)' to approximate
+              let decimalVal: number | null = null;
+              
+              try {
+                  const floatRes = AlgebriteEngine.run(`float(${res})`);
+                  if (/^-?\d*\.?\d+(e[-+]?\d+)?$/.test(floatRes)) {
+                      decimalVal = parseFloat(floatRes);
+                  }
+              } catch(e) {}
+              
+              if (decimalVal !== null && !isNaN(decimalVal) && isFinite(decimalVal) && !/^\[/.test(res)) {
+                   finalLatex = parseFloat(decimalVal.toFixed(4)).toString();
+                   isRationalDecimal = true;
               } else {
-                   // Convert standard ASCII result to LaTeX
-                   // We use Nerdamer helper if available to beautify Algebrite output
-                   const NerdamerEngine = getNerdamer();
-                   if (NerdamerEngine) {
-                      try {
-                          finalLatex = NerdamerEngine(res).toTeX();
-                      } catch(nErr) {
-                           finalLatex = res.replace(/\*/g, '');
-                      }
-                   } else {
-                      finalLatex = res.replace(/\*/g, '');
-                   }
+                  // Fallbacks for matrices or non-numeric
+                  if (/^\[\s*\[/.test(res)) {
+                       // Matrix
+                       finalLatex = formatMatrixToLatex(res);
+                       addLog(`Formatted Matrix LaTeX: ${finalLatex}`);
+                  } else {
+                       // Standard Conversion
+                       const NerdamerEngine = getNerdamer();
+                       if (NerdamerEngine) {
+                          try {
+                              finalLatex = NerdamerEngine(res).toTeX();
+                          } catch(nErr) {
+                               finalLatex = res.replace(/\*/g, '');
+                          }
+                       } else {
+                          finalLatex = res.replace(/\*/g, '');
+                       }
+                  }
               }
 
               setUsedEngine('Algebrite');
-              try {
-                 const val = AlgebriteEngine.run(`float(${res})`);
-                 if (val && !isNaN(parseFloat(val))) {
-                   setDecimalResult(val);
-                 }
-              } catch(e) {}
+              setDecimalResult(null); 
 
               return true;
 

@@ -183,7 +183,8 @@ const App: React.FC = () => {
       // Prepare Context
       const context = (effectiveContext && effectiveContext.response) ? {
          previousQuery: effectiveContext.query,
-         previousResult: effectiveContext.response.result
+         // Fix: Convert result parts array to a single string for context
+         previousResult: effectiveContext.response.result.map(p => p.content).join(' ')
       } : undefined;
 
       const response = await solveQuery(queryText, newItem.modelMode, newItem.attachedImage, newItem.audioBase64, context);
