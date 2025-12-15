@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { SolverResponse, ModelMode } from "../types";
 
 declare global {
@@ -191,32 +191,24 @@ const schemaDefinition = `
 // Robust JSON Extractor
 const extractJSON = (raw: string, requiredKey?: string): string => {
   let text = raw.trim();
+  
+  // 1. Try markdown code block
   const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
   if (jsonBlockMatch) return jsonBlockMatch[1];
   
   const genericBlockMatch = text.match(/```\s*([\s\S]*?)\s*```/);
   if (genericBlockMatch) return genericBlockMatch[1];
 
-  if (requiredKey) {
-    const keyIndex = text.indexOf(`"${requiredKey}"`);
-    if (keyIndex !== -1) {
-        const sub = text.substring(0, keyIndex);
-        const realStart = sub.lastIndexOf('{');
-        if (realStart !== -1) {
-            const realEnd = text.lastIndexOf('}');
-            if (realEnd > realStart) {
-                return text.substring(realStart, realEnd + 1);
-            }
-        }
-    }
-  }
-
+  // 2. Try finding the outer braces if raw text
+  // We look for the first '{' and the last '}'
   const firstBrace = text.indexOf('{');
   const lastBrace = text.lastIndexOf('}');
+  
   if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
        return text.substring(firstBrace, lastBrace + 1);
   }
 
+  // 3. Fallback: if no braces found, it might be plain text. Return as is, parser will fail.
   return text; 
 };
 
@@ -247,18 +239,16 @@ const attemptGenerate = async (
             - 'datasets': An array of objects, each with a 'label' (series name) and 'data' (array of numbers).
       4.  **Accuracy**: Use the googleSearch tool if the query requires up-to-date information.
       5.  **Format**: Return ONLY valid raw JSON matching the schema below.
-      
-      SCHEMA:
-      ${schemaDefinition}
     `;
 
     if (modelMode === 'flash') {
       systemInstruction += `
-      [STRICT MODE: FLASH]
-      1. **EXTREME CONCISENESS**: Output ONLY the final answer. Max 1-2 sentences.
-      2. **SIMPLICITY**: Do not use complex Markdown.
-      3. **STRUCTURE**: 'result' max 40 words. 'sections' empty unless code required. No Charts.
-      4. **INTERPRETATION**: Max 3-5 words.
+      [MODE: FLASH - SPEED & RELIABILITY]
+      - You are in a recovery mode. SPEED and JSON COMPLIANCE are the top priorities.
+      - Do not generate long explanations.
+      - Return the answer in the specific JSON structure provided.
+      - 'result' should be direct. 'sections' can be minimal.
+      - NO Charts.
       `;
     } else {
        systemInstruction += `
@@ -269,6 +259,9 @@ const attemptGenerate = async (
        - Use charts and visualizations where helpful.
        `;
     }
+    
+    // Append Schema at the end to maximize adherence
+    systemInstruction += `\n\nJSON SCHEMA:\n${schemaDefinition}`;
 
     // Set Timeout: 45s for Pro (thinking takes time), 20s for Flash
     const timeoutMs = modelMode === 'pro' ? 45000 : 20000;
@@ -295,18 +288,21 @@ const attemptGenerate = async (
       parsed = JSON.parse(jsonText) as SolverResponse;
     } catch (e) {
       try {
+        // Simple repair for common JSON issues (newlines in strings, etc)
         const repaired = jsonText.replace(/\\(?!(["\\/bfnrt]|u[0-9a-fA-F]{4}))/g, "\\\\");
         parsed = JSON.parse(repaired) as SolverResponse;
         console.warn("Original JSON parse failed, but repair was successful.");
       } catch (repairError) {
         console.warn("JSON Parse Failed. Fallback to raw text.");
         const raw = text.trim();
+        // If we really can't parse JSON, we wrap the raw text in a valid response structure
+        // This ensures the app always shows *something*
         parsed = {
-            interpretation: "System Message",
+            interpretation: "System Response (Unstructured)",
             result: [{ type: 'markdown', content: raw }],
-            confidenceScore: 1.0,
+            confidenceScore: 0.5,
             sections: [],
-            suggestions: ["Refine Query", "Provide Details"]
+            suggestions: ["Refine Query"]
         };
       }
     }
@@ -329,7 +325,7 @@ const attemptGenerate = async (
     if (typeof parsed.result === 'string') {
         parsed.result = [{ type: 'markdown', content: parsed.result }];
     }
-    if (!parsed.interpretation) parsed.interpretation = "";
+    if (!parsed.interpretation) parsed.interpretation = "Result";
     if (!parsed.sections) parsed.sections = [];
 
     return parsed;
