@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { X, Nu, Play, RefreshCw, AlertTriangle, Terminal, Trash2, Copy, CheckCircle2 } from '../components/icons';
+
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Nu, Play, RefreshCw, AlertTriangle, Terminal, Trash2, Copy, CheckCircle2, Share2, Check } from '../components/icons';
 import { parseNumericalExpression } from '../services/geminiService';
 
 declare const math: any;
@@ -7,9 +8,10 @@ declare const math: any;
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  initialQuery?: string;
 }
 
-export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose }) => {
+export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery }) => {
   const [input, setInput] = useState('');
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -17,23 +19,42 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [debugLog, setDebugLog] = useState<string[]>([]);
   const [showDebug, setShowDebug] = useState(false);
+  const [isCopiedLink, setIsCopiedLink] = useState(false);
+  
+  const hasAutoRunRef = useRef(false);
 
   // Focus input on open
   useEffect(() => {
     if (isOpen) {
-      // Small delay to allow mount
       setTimeout(() => document.getElementById('num-input')?.focus(), 100);
+    } else {
+        hasAutoRunRef.current = false;
     }
   }, [isOpen]);
+
+  // Handle Initial Query Auto-Run
+  useEffect(() => {
+      if (isOpen && initialQuery && !hasAutoRunRef.current) {
+          setInput(initialQuery);
+          hasAutoRunRef.current = true;
+          executeSolve(initialQuery);
+      }
+  }, [isOpen, initialQuery]);
 
   const addLog = (msg: string) => {
     console.log(`[Numerical] ${msg}`);
     setDebugLog(prev => [...prev, msg]);
   };
 
-  const handleSolve = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!input.trim()) return;
+  const handleShare = () => {
+    const url = `${window.location.origin}/?tool=numerical&q=${encodeURIComponent(input)}`;
+    navigator.clipboard.writeText(url);
+    setIsCopiedLink(true);
+    setTimeout(() => setIsCopiedLink(false), 2000);
+  };
+
+  const executeSolve = async (queryToSolve: string) => {
+    if (!queryToSolve.trim()) return;
 
     setIsProcessing(true);
     setError(null);
@@ -45,18 +66,18 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose }) => {
         throw new Error("Math.js library not loaded.");
       }
 
-      addLog(`User Input: "${input}"`);
+      addLog(`User Input: "${queryToSolve}"`);
       
       // 1. Natural Language Parsing
       addLog("Parsing natural language with Gemini 2.5 Flash...");
-      let parsedExpression = input;
+      let parsedExpression = queryToSolve;
       try {
-          parsedExpression = await parseNumericalExpression(input);
+          parsedExpression = await parseNumericalExpression(queryToSolve);
       } catch (geminiError: any) {
           addLog(`Gemini parsing failed: ${geminiError.message}. Using raw input.`);
       }
       
-      if (parsedExpression !== input) {
+      if (parsedExpression !== queryToSolve) {
         addLog(`Transformed to Math.js Syntax: "${parsedExpression}"`);
       } else {
          addLog(`Expression used as-is: "${parsedExpression}"`);
@@ -105,6 +126,11 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose }) => {
     }
   };
 
+  const handleSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      executeSolve(input);
+  }
+
   const clearAll = () => {
     setInput('');
     setResult(null);
@@ -133,9 +159,18 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                 </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-500">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-2">
+            <button 
+                  onClick={handleShare}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-500 relative"
+                  title="Share Direct Link"
+              >
+                  {isCopiedLink ? <Check className="w-5 h-5 text-emerald-500" /> : <Share2 className="w-5 h-5" />}
+            </button>
+            <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-500">
+                <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
@@ -154,7 +189,7 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose }) => {
             </div>
 
             {/* Input Section */}
-            <form onSubmit={handleSolve} className="mb-6 relative">
+            <form onSubmit={handleSubmit} className="mb-6 relative">
                 <div className="relative">
                     <textarea 
                         id="num-input"
@@ -163,6 +198,7 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                         placeholder="Enter math problem (e.g. 'average of 10, 20, 30')..."
                         className="w-full pl-4 pr-14 py-4 h-32 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all text-slate-900 dark:text-slate-100 font-mono text-sm resize-none"
                         spellCheck={false}
+                        autoFocus={!initialQuery}
                     />
                     <div className="absolute right-2 bottom-2 flex flex-col space-y-2">
                         <button 

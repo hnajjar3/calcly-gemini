@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle, Calculator, Zap, Terminal, CheckCircle2 } from '../components/icons';
+import { X, Sigma, Play, RefreshCw, AlertTriangle, Calculator, Terminal, CheckCircle2, Share2, Check } from '../components/icons';
 import { parseMathCommand, MathCommand } from '../services/geminiService';
 import { LatexRenderer } from './LatexRenderer';
 
@@ -98,9 +99,10 @@ const formatMatrixToLatex = (str: string): string => {
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  initialQuery?: string;
 }
 
-export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
+export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery }) => {
   const [input, setInput] = useState('');
   const [parsedCommand, setParsedCommand] = useState<MathCommand | null>(null);
   const [resultLatex, setResultLatex] = useState('');
@@ -111,9 +113,15 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
   const [libraryStatus, setLibraryStatus] = useState<{ nerdamer: boolean, algebrite: boolean }>({ nerdamer: false, algebrite: false });
   const [debugLog, setDebugLog] = useState<string[]>([]);
   const [showDebug, setShowDebug] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
+  
+  const hasAutoRunRef = useRef(false);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+        hasAutoRunRef.current = false;
+        return;
+    }
 
     let attempts = 0;
     const maxAttempts = 30; 
@@ -130,14 +138,30 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
     checkLibraries();
   }, [isOpen]);
 
+  // Handle Initial Query
+  useEffect(() => {
+    if (isOpen && initialQuery && !hasAutoRunRef.current) {
+        setInput(initialQuery);
+        hasAutoRunRef.current = true;
+        // Auto execute
+        executeSolve(initialQuery);
+    }
+  }, [isOpen, initialQuery]);
+
   const addLog = (msg: string) => {
     console.log(`[Solver] ${msg}`);
     setDebugLog(prev => [...prev, msg]);
   };
 
-  const handleSolve = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!input.trim() || isProcessing) return;
+  const handleShare = () => {
+    const url = `${window.location.origin}/?tool=symbolic&q=${encodeURIComponent(input)}`;
+    navigator.clipboard.writeText(url);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
+
+  const executeSolve = async (queryToSolve: string) => {
+    if (!queryToSolve.trim() || isProcessing) return;
 
     setIsProcessing(true);
     setError(null);
@@ -147,13 +171,9 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
     setUsedEngine(null);
     setDebugLog([]);
 
-    const nCheck = !!getNerdamer();
-    const aCheck = !!getAlgebrite();
-    setLibraryStatus({ nerdamer: nCheck, algebrite: aCheck });
-
     try {
       addLog("Parsing natural language with Gemini...");
-      const command = await parseMathCommand(input);
+      const command = await parseMathCommand(queryToSolve);
       setParsedCommand(command);
       addLog(`Parsed Command: ${JSON.stringify(command)}`);
 
@@ -237,20 +257,14 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                decimalText = evaluated.text('decimals');
             } catch(e) {}
 
-            // Check if we should use decimal text
-            // 1. If resultString is fraction/irrational but decimalText is valid scalar
-            // 2. If resultString is a list and we want decimals for roots
             let useDecimalText = false;
             if (decimalText && decimalText !== resultString) {
-                // If it's a list [a, b], check if decimalText is also a list
                 if (resultString.startsWith('[') && decimalText.startsWith('[')) {
                     useDecimalText = true;
                 } 
-                // If scalar decimal
                 else if (/^-?\d*\.?\d+$/.test(decimalText)) {
                     useDecimalText = true;
                 }
-                // If complex scalar
                 else if (decimalText.includes('i') && decimalText.includes('.')) {
                     useDecimalText = true;
                 }
@@ -260,17 +274,13 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                 addLog(`Using decimal text: ${decimalText}`);
                 finalLatex = formatDecimalLatex(decimalText);
             } else {
-                // Check if resultString itself is simple enough to format directly
-                // e.g. [0.5+0.866i, ...]
                 if (resultString.startsWith('[') && resultString.includes('.')) {
                     finalLatex = formatDecimalLatex(resultString);
                 } else if (/^-?\d+\/\d+$/.test(resultString)) {
-                     // Simple fraction -> Decimal
                      const [n, d] = resultString.split('/').map(Number);
                      if (d !== 0) finalLatex = parseFloat((n / d).toFixed(4)).toString();
                      else finalLatex = evaluated.toTeX();
                 } else {
-                     // Fallback to standard symbolic TeX
                      finalLatex = evaluated.toTeX();
                 }
             }
@@ -342,19 +352,16 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                  return false;
               }
 
-              // TRY DECIMAL RESOLUTION
               let decimalRes = '';
               try {
                   decimalRes = AlgebriteEngine.run(`float(${res})`);
               } catch(e) {}
 
               if (decimalRes && !decimalRes.includes("Stop")) {
-                  // If result is list or scalar, prefer decimalRes
                   if (decimalRes.startsWith('[') || /^-?\d*\.?\d+(e[-+]?\d+)?$/.test(decimalRes)) {
                       addLog(`Using Algebrite decimal: ${decimalRes}`);
                       finalLatex = formatDecimalLatex(decimalRes);
                   } else {
-                      // Fallback for matrix or complex structure
                       if (/^\[\s*\[/.test(res)) {
                            finalLatex = formatMatrixToLatex(res);
                       } else {
@@ -368,7 +375,6 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                       }
                   }
               } else {
-                  // Normal fallback
                    if (/^\[\s*\[/.test(res)) {
                        finalLatex = formatMatrixToLatex(res);
                   } else {
@@ -392,8 +398,6 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
             }
       };
 
-      // --- DYNAMIC EXECUTION FLOW ---
-      
       if (command.preferredEngine === 'algebrite') {
          addLog("Gemini prefers Algebrite for this query.");
          solved = runAlgebrite();
@@ -410,7 +414,6 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
       }
 
       if (solved) {
-        // Cleanup LaTeX
         finalLatex = finalLatex.replace(/\\text{([^}]*)}/g, '$1');
         setResultLatex(finalLatex.startsWith('$$') ? finalLatex : `$$${finalLatex}$$`);
       } else {
@@ -423,6 +426,11 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    executeSolve(input);
   };
 
   if (!isOpen) return null;
@@ -444,9 +452,18 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                 </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-500">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-2">
+              <button 
+                  onClick={handleShare}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-500 relative"
+                  title="Share Direct Link"
+              >
+                  {isCopied ? <Check className="w-5 h-5 text-emerald-500" /> : <Share2 className="w-5 h-5" />}
+              </button>
+              <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-500">
+                <X className="w-5 h-5" />
+              </button>
+          </div>
         </div>
 
         <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
@@ -461,7 +478,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
             )}
 
             {/* Input Section */}
-            <form onSubmit={handleSolve} className="mb-6 relative">
+            <form onSubmit={handleSubmit} className="mb-6 relative">
                 <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">
                     Describe your math problem (Natural Language)
                 </label>
@@ -472,7 +489,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                         onChange={(e) => setInput(e.target.value)}
                         placeholder="e.g., Determinant of [[1,2],[3,4]]"
                         className="w-full pl-4 pr-14 py-4 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all text-slate-900 dark:text-slate-100"
-                        autoFocus
+                        autoFocus={!initialQuery}
                     />
                     <button 
                         type="submit"
