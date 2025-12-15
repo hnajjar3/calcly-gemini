@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle, Calculator, Zap, Terminal, CheckCircle2, Sparkles } from '../components/icons';
-import { parseMathCommand, MathCommand, explainMathResult } from '../services/geminiService';
+import { parseMathCommand, MathCommand, explainMathResult, solveMathWithAI } from '../services/geminiService';
 import { LatexRenderer } from './LatexRenderer';
 
 declare const nerdamer: any;
@@ -108,7 +108,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
   const [decimalResult, setDecimalResult] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [usedEngine, setUsedEngine] = useState<'Nerdamer' | 'Algebrite' | null>(null);
+  const [usedEngine, setUsedEngine] = useState<string | null>(null);
   const [libraryStatus, setLibraryStatus] = useState<{ nerdamer: boolean, algebrite: boolean }>({ nerdamer: false, algebrite: false });
   const [debugLog, setDebugLog] = useState<string[]>([]);
   const [showDebug, setShowDebug] = useState(false);
@@ -235,6 +235,15 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
             const isFailure = (operation !== 'evaluate') && failKeywords.some(kw => resultString.includes(kw) && resultString.includes('('));
             if (isFailure) {
                 addLog(`Nerdamer returned input (unsolved): ${resultString}`);
+                return false;
+            }
+            
+            // Heuristic: If operation is evaluate but result is identical to input (ignoring spaces), treat as failure
+            // This catches things like "Fourier Transform of..." returning "Fourier Transform of..."
+            const cleanResult = resultString.replace(/\s/g, '');
+            const cleanInput = expression.replace(/\s/g, '');
+            if (operation === 'evaluate' && cleanResult === cleanInput && cleanInput.length > 5 && !/^\d+$/.test(cleanInput)) {
+                addLog(`Nerdamer returned input for evaluation (unsolved): ${resultString}`);
                 return false;
             }
 
@@ -416,10 +425,28 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
          }
       }
 
+      // AI FALLBACK: If local engines fail, ask Gemini
+      if (!solved) {
+         addLog("Local engines failed or could not solve. Attempting AI Fallback...");
+         try {
+             const aiResult = await solveMathWithAI(input);
+             if (aiResult && aiResult.length > 0 && !aiResult.toLowerCase().includes("no solution")) {
+                 finalLatex = aiResult;
+                 setUsedEngine('Gemini (AI)');
+                 addLog(`AI Fallback result: ${aiResult}`);
+                 solved = true;
+             }
+         } catch (aiErr) {
+             addLog("AI Fallback failed to retrieve response.");
+         }
+      }
+
       if (solved) {
         // Cleanup LaTeX
         finalLatex = finalLatex.replace(/\\text{([^}]*)}/g, '$1');
-        setResultLatex(finalLatex.startsWith('$$') ? finalLatex : `$$${finalLatex}$$`);
+        // If AI returns block math $$ already, don't double wrap
+        const hasBlock = finalLatex.trim().startsWith('$$');
+        setResultLatex(hasBlock ? finalLatex : `$$${finalLatex}$$`);
       } else {
         throw new Error("Unable to solve symbolically with available engines.");
       }

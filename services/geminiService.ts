@@ -539,3 +539,34 @@ export const explainMathResult = async (query: string, result: string, engine: s
     return "Could not generate explanation due to an error.";
   }
 };
+
+export const solveMathWithAI = async (query: string): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+  
+  const systemInstruction = `
+    You are a symbolic math engine. Your task is to solve the user's math problem and provide the final result in LaTeX.
+    
+    RULES:
+    1. Output ONLY the final mathematical result in LaTeX format.
+    2. Wrap the result in block math delimiters: $$ ... $$
+    3. Do not include explanations, steps, or markdown text outside the LaTeX block.
+    4. If the result is "No solution" or undefined, say so clearly in text.
+    5. Handle complex requests like Fourier transforms, Laplace transforms, eigenvectors, etc.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: { parts: [{ text: query }] },
+      config: {
+        systemInstruction: systemInstruction,
+        thinkingConfig: { thinkingBudget: 0 },
+      }
+    });
+
+    return response.text?.trim() || "";
+  } catch (error) {
+    console.error("AI Fallback error:", error);
+    return "";
+  }
+};
