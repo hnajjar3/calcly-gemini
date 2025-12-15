@@ -181,7 +181,7 @@ const extractJSON = (raw: string, requiredKey?: string): string => {
 
   // 2. Heuristic: Look for specific schema keys to find the real start if provided
   if (requiredKey) {
-    const keyIndex = text.indexOf(`"${requiredKey}"`);
+    const keyIndex = text.lastIndexOf(`"${requiredKey}"`);
     if (keyIndex !== -1) {
         // Find the opening brace belonging to this key. 
         // It should be the closest '{' before this key.
