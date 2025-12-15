@@ -23,11 +23,6 @@ const App: React.FC = () => {
   const [showCalculator, setShowCalculator] = useState(false);
   const [showSymbolicSolver, setShowSymbolicSolver] = useState(false);
   const [showNumericalSolver, setShowNumericalSolver] = useState(false);
-  
-  // States for deep linking into specific tools
-  const [initialSymbolicQuery, setInitialSymbolicQuery] = useState('');
-  const [initialNumericalQuery, setInitialNumericalQuery] = useState('');
-
   const [isRecording, setIsRecording] = useState(false);
   
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -219,28 +214,17 @@ const App: React.FC = () => {
     try {
         const params = new URLSearchParams(window.location.search);
         const urlQuery = params.get('q');
-        const tool = params.get('tool'); // 'symbolic' | 'numerical'
         
         if (urlQuery && !hasAutoSubmitted.current) {
             hasAutoSubmitted.current = true;
-            
-            if (tool === 'symbolic') {
-                setInitialSymbolicQuery(urlQuery);
-                setShowSymbolicSolver(true);
-            } else if (tool === 'numerical') {
-                setInitialNumericalQuery(urlQuery);
-                setShowNumericalSolver(true);
-            } else {
-                // Default Chat Flow
-                const modeParam = params.get('mode');
-                if (modeParam === 'flash') {
-                    setModelMode('flash');
-                }
-                
-                setTimeout(() => {
-                    handleSubmit(undefined, urlQuery);
-                }, 100);
+            const modeParam = params.get('mode');
+            if (modeParam === 'flash') {
+                setModelMode('flash');
             }
+            
+            setTimeout(() => {
+                handleSubmit(undefined, urlQuery);
+            }, 100);
         }
     } catch (e) {
         // Ignore errors in restricted environments
@@ -484,18 +468,10 @@ const App: React.FC = () => {
       <BasicCalculator isOpen={showCalculator} onClose={() => setShowCalculator(false)} />
       
       {/* Symbolic Solver Modal */}
-      <SymbolicSolver 
-        isOpen={showSymbolicSolver} 
-        onClose={() => setShowSymbolicSolver(false)} 
-        initialQuery={initialSymbolicQuery}
-      />
+      <SymbolicSolver isOpen={showSymbolicSolver} onClose={() => setShowSymbolicSolver(false)} />
 
       {/* Numerical Solver Modal */}
-      <NumericalSolver 
-        isOpen={showNumericalSolver} 
-        onClose={() => setShowNumericalSolver(false)} 
-        initialQuery={initialNumericalQuery}
-      />
+      <NumericalSolver isOpen={showNumericalSolver} onClose={() => setShowNumericalSolver(false)} />
 
     </div>
   );

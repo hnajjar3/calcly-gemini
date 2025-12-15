@@ -1,4 +1,3 @@
-
 # Calcly - Open Source AI Computational Engine
 
 Calcly is an **open-source**, AI-powered computational knowledge engine inspired by Wolfram Alpha. It leverages Google's Gemini models to solve complex math, physics, coding, and general knowledge queries, complete with symbolic computation and data visualizations.
@@ -11,27 +10,6 @@ Calcly is an **open-source**, AI-powered computational knowledge engine inspired
 - **Multimodal Input**: Support for image analysis and voice queries.
 - **Dual Mode**: Switch between **Pro** (Reasoning, Gemini 3) and **Flash** (Speed, Gemini 2.5).
 - **Open Source**: Now available for the community to explore and extend.
-
-## 🔗 Deep Linking & URL Parameters
-
-Calcly supports deep linking, allowing you to create direct links to specific queries or tools. This is useful for sharing results or integrating with other workflows.
-
-### Main Chat Interface
-- **`q`**: The query text to execute immediately.
-- **`mode`**: The model to use (`pro` or `flash`). Defaults to `pro` if unspecified.
-
-**Examples:**
-- `https://your-domain.com/?q=integrate+x^2`
-- `https://your-domain.com/?q=explain+quantum+entanglement&mode=flash`
-
-### Specific Tools
-Use the `tool` parameter to route requests directly to specialized solvers.
-
-- **Symbolic Solver**: `tool=symbolic`
-  - `https://your-domain.com/?tool=symbolic&q=derivative+of+sin(x)`
-  
-- **Numerical Solver**: `tool=numerical`
-  - `https://your-domain.com/?tool=numerical&q=mean([1,2,3,4])`
 
 ---
 

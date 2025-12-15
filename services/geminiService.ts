@@ -419,34 +419,6 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
   
   const systemInstruction = `
     You are a math syntax parser. Your goal is to map natural language math queries into a strict JSON command structure for a symbolic engine.
-    
-    CRITICAL: You must extract the mathematical expression and the operation type. 
-    DO NOT default to "evaluate" if the user explicitly asks for an operation like "derivative", "integral", "solve", etc.
-    
-    MAPPING RULES:
-    - "derivative", "derive", "differentiate", "slope" -> operation: "differentiate"
-    - "integral", "integrate", "antiderivative", "area under" -> operation: "integrate"
-    - "solve", "find x", "roots" -> operation: "solve"
-    - "simplify" -> operation: "simplify"
-    - "factor" -> operation: "factor"
-    - "limit" -> operation: "limit"
-    - "sum", "summation" -> operation: "sum"
-    - "determinant" -> operation: "determinant"
-    - "inverse", "invert" -> operation: "invert"
-    - "taylor series", "expansion" -> operation: "taylor"
-
-    EXAMPLES:
-    User: "derivative of sin(x)"
-    JSON: { "operation": "differentiate", "expression": "sin(x)", "variable": "x" }
-
-    User: "integrate x^2 from 0 to 10"
-    JSON: { "operation": "integrate", "expression": "x^2", "variable": "x", "start": "0", "end": "10" }
-
-    User: "solve x^2 - 4 = 0"
-    JSON: { "operation": "solve", "expression": "x^2 - 4 = 0", "variable": "x" }
-
-    User: "evaluate 5+5"
-    JSON: { "operation": "evaluate", "expression": "5+5" }
 
     OUTPUT JSON SCHEMA:
     {
@@ -499,79 +471,11 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
   }
 };
 
-export const fixMathCommand = async (originalQuery: string, previousCommand: MathCommand, errorContext: string): Promise<MathCommand> => {
-  const ai = new GoogleGenAI({ apiKey: getApiKey() });
-
-  const systemInstruction = `
-    You are a Math Command Repair Agent.
-    The previous attempt to solve the user's query with a symbolic engine failed (it returned the input unchanged or threw an error).
-    
-    Your task is to Analyze the failure and provide a REFINED command.
-    
-    STRATEGIES:
-    1. If the engine returned the input (echoed), it means it couldn't solve it. Try simplifying the expression or changing the 'preferredEngine'.
-    2. Check if the variable is correct.
-    3. Check if the expression syntax is valid for standard JS/math libraries.
-    4. If the failure seems to be due to engine limitation, you might suggest the other engine in 'preferredEngine'.
-    
-    Previous Command: ${JSON.stringify(previousCommand)}
-    Error/Output Context: ${errorContext}
-    Original User Query: ${originalQuery}
-    
-    OUTPUT JSON SCHEMA: Same as MathCommand.
-  `;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: { parts: [{ text: "Fix the command." }] },
-      config: {
-        systemInstruction: systemInstruction,
-        thinkingConfig: { thinkingBudget: 0 },
-        responseMimeType: 'application/json'
-      }
-    });
-
-    const jsonText = extractJSON(response.text || '', 'operation');
-    return JSON.parse(jsonText) as MathCommand;
-  } catch (e) {
-    return previousCommand; // Return original if fix fails
-  }
-};
-
 export const parseNumericalExpression = async (query: string): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
   const systemInstruction = `
-    You are a Math.js Translator. Your goal is to convert natural language queries into valid Math.js syntax for the evaluate() function.
-    
-    CRITICAL RESTRICTIONS:
-    1. **NO Symbolic Calculus**: Functions like 'integrate', 'derivative', 'differentiate' DO NOT EXIST in this engine.
-    2. **APPROXIMATE Integrals**: If the user asks for an integral, you MUST convert it to a Riemann Sum using vector ranges.
-       - Input: "Integrate x^2 from 0 to 1"
-       - Output: "sum((0:0.001:1) .^ 2) * 0.001"
-       - Input: "integral of sin(x) from 0 to pi"
-       - Output: "sum(sin(0:0.001:3.14159)) * 0.001"
-    
-    CRITICAL SYNTAX RULES:
-    1. **Vectorization**: Prefer vector operations over loops. 
-    2. **Element-wise Operators**: You MUST use dot operators for array arithmetic: \`.*\`, \`./\`, \` .^\`.
-       - BAD: \`[1,2] * [3,4]\` (Matrix multiplication error)
-       - GOOD: \`[1,2] .* [3,4]\` (Element-wise)
-       - BAD: \`(0:10)^2\`
-       - GOOD: \`(0:10).^2\`
-    3. **Ranges**: Use \`start:step:end\` syntax (e.g., \`0:0.1:10\`).
-    
-    EXAMPLES:
-    User: "Average of 2^x where x is between 1 and 10"
-    JSON: { "expression": "mean(2 .^ (1:10))" }
-
-    User: "Sum of squares from 1 to 100"
-    JSON: { "expression": "sum((1:100) .^ 2)" }
-    
-    User: "integral sin(x)*exp(-x) from 0 to 1"
-    JSON: { "expression": "sum(sin(0:0.001:1) .* exp(-(0:0.001:1))) * 0.001" }
-
+    You are a Math.js Translator. Your goal is to convert natural language queries into valid Math.js syntax.
     OUTPUT JSON SCHEMA: { "expression": "string" }
   `;
 
@@ -600,43 +504,38 @@ export const parseNumericalExpression = async (query: string): Promise<string> =
   }
 };
 
-export const fixNumericalExpression = async (originalQuery: string, previousExpression: string, errorContext: string): Promise<string> => {
+export const explainMathResult = async (query: string, result: string, engine: string): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
-
+  
   const systemInstruction = `
-    You are a Math.js Repair Agent. 
-    The previous expression failed to evaluate in Math.js.
+    You are a math tutor. Your goal is to explain how to derive the result for the user's math problem step-by-step.
     
-    ERROR: "${errorContext}"
-    PREVIOUS EXPRESSION: "${previousExpression}"
-    USER QUERY: "${originalQuery}"
-    
-    COMMON FIXES:
-    1. **"Undefined function integrate"**: Convert the integral to a numeric Riemann sum.
-       - e.g., "sum((start:step:end) .^ 2) * step"
-    2. **"Unexpected type of argument" (Matrix/Array)**: Use element-wise dot operators (\`.*\`, \`./\`, \`.^\`) instead of standard operators.
-    3. **"Undefined symbol"**: The variable might be missing from scope. Use explicit ranges (e.g. \`1:10\`) instead of variables like \`x\`.
-    
-    Return a JSON object with the fixed expression string.
-    
-    OUTPUT JSON SCHEMA: { "expression": "string" }
+    CONTEXT:
+    - User Query: "${query}"
+    - Computed Result: "${result}"
+    - Engine Used: "${engine}"
+
+    INSTRUCTIONS:
+    1. Verify the result if possible, but primarily explain the method to reach it.
+    2. Provide clear, step-by-step derivation.
+    3. Use LaTeX for math equations, wrapped in single $ for inline and double $$ for block equations.
+    4. Keep the tone helpful and educational.
+    5. Format with Markdown (bolding, lists).
   `;
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: { parts: [{ text: "Fix the expression." }] },
+      contents: { parts: [{ text: "Explain the steps." }] },
       config: {
         systemInstruction: systemInstruction,
-        thinkingConfig: { thinkingBudget: 0 },
-        responseMimeType: 'application/json'
+        thinkingConfig: { thinkingBudget: 0 }, 
       }
     });
 
-    const jsonText = extractJSON(response.text || '', 'expression');
-    const parsed = JSON.parse(jsonText);
-    return parsed.expression || previousExpression;
-  } catch (e) {
-    return previousExpression;
+    return response.text || "No explanation provided.";
+  } catch (error) {
+    console.error("Explanation failed", error);
+    return "Could not generate explanation due to an error.";
   }
 };

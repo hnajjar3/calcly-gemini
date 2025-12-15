@@ -1,17 +1,15 @@
-
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Nu, Play, RefreshCw, AlertTriangle, Terminal, Trash2, Copy, CheckCircle2, Share2, Check } from '../components/icons';
-import { parseNumericalExpression, fixNumericalExpression } from '../services/geminiService';
+import React, { useState, useEffect } from 'react';
+import { X, Nu, Play, RefreshCw, AlertTriangle, Terminal, Trash2, Copy, CheckCircle2 } from '../components/icons';
+import { parseNumericalExpression } from '../services/geminiService';
 
 declare const math: any;
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  initialQuery?: string;
 }
 
-export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery }) => {
+export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose }) => {
   const [input, setInput] = useState('');
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -19,42 +17,23 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery
   const [isProcessing, setIsProcessing] = useState(false);
   const [debugLog, setDebugLog] = useState<string[]>([]);
   const [showDebug, setShowDebug] = useState(false);
-  const [isCopiedLink, setIsCopiedLink] = useState(false);
-  
-  const hasAutoRunRef = useRef(false);
 
   // Focus input on open
   useEffect(() => {
     if (isOpen) {
+      // Small delay to allow mount
       setTimeout(() => document.getElementById('num-input')?.focus(), 100);
-    } else {
-        hasAutoRunRef.current = false;
     }
   }, [isOpen]);
-
-  // Handle Initial Query Auto-Run
-  useEffect(() => {
-      if (isOpen && initialQuery && !hasAutoRunRef.current) {
-          setInput(initialQuery);
-          hasAutoRunRef.current = true;
-          executeSolve(initialQuery);
-      }
-  }, [isOpen, initialQuery]);
 
   const addLog = (msg: string) => {
     console.log(`[Numerical] ${msg}`);
     setDebugLog(prev => [...prev, msg]);
   };
 
-  const handleShare = () => {
-    const url = `${window.location.origin}/?tool=numerical&q=${encodeURIComponent(input)}`;
-    navigator.clipboard.writeText(url);
-    setIsCopiedLink(true);
-    setTimeout(() => setIsCopiedLink(false), 2000);
-  };
-
-  const executeSolve = async (queryToSolve: string) => {
-    if (!queryToSolve.trim()) return;
+  const handleSolve = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!input.trim()) return;
 
     setIsProcessing(true);
     setError(null);
@@ -66,18 +45,18 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery
         throw new Error("Math.js library not loaded.");
       }
 
-      addLog(`User Input: "${queryToSolve}"`);
+      addLog(`User Input: "${input}"`);
       
       // 1. Natural Language Parsing
       addLog("Parsing natural language with Gemini 2.5 Flash...");
-      let parsedExpression = queryToSolve;
+      let parsedExpression = input;
       try {
-          parsedExpression = await parseNumericalExpression(queryToSolve);
+          parsedExpression = await parseNumericalExpression(input);
       } catch (geminiError: any) {
           addLog(`Gemini parsing failed: ${geminiError.message}. Using raw input.`);
       }
       
-      if (parsedExpression !== queryToSolve) {
+      if (parsedExpression !== input) {
         addLog(`Transformed to Math.js Syntax: "${parsedExpression}"`);
       } else {
          addLog(`Expression used as-is: "${parsedExpression}"`);
@@ -85,55 +64,20 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery
 
       addLog(`Current Variable Scope: [${Object.keys(scope).join(', ')}]`);
 
-      // 2. Execution Loop with Retry
-      let attempts = 0;
-      const maxAttempts = 3;
-      let success = false;
-      let finalRes: any = null;
-
-      while(attempts <= maxAttempts && !success) {
-          try {
-              addLog(`Executing math.evaluate()... (Attempt ${attempts + 1})`);
-              
-              // Evaluate
-              finalRes = math.evaluate(parsedExpression, scope);
-              success = true;
-
-          } catch (err: any) {
-              const errMsg = err.message || "Calculation Error";
-              addLog(`Error on attempt ${attempts + 1}: ${errMsg}`);
-
-              if (attempts < maxAttempts) {
-                   addLog("Asking Gemini to fix the expression based on the error...");
-                   try {
-                       const corrected = await fixNumericalExpression(queryToSolve, parsedExpression, errMsg);
-                       if (corrected === parsedExpression) {
-                           addLog("Gemini returned the same expression. Aborting retry.");
-                           // Break to error handler
-                           throw new Error("Unable to auto-correct expression. Please check syntax."); 
-                       }
-                       parsedExpression = corrected;
-                       addLog(`Repaired Expression: "${parsedExpression}"`);
-                   } catch (fixErr) {
-                       addLog("Failed to repair expression.");
-                       throw err; // Throw original error
-                   }
-              } else {
-                  throw new Error("Could not solve after multiple attempts. Please try providing more specific instructions.");
-              }
-          }
-          attempts++;
-      }
+      // 2. Execution
+      // math.evaluate can return various types (number, matrix, unit, etc.)
+      addLog("Executing math.evaluate()...");
+      const res = math.evaluate(parsedExpression, scope);
       
       // Determine type
       let type = 'unknown';
-      try { type = math.typeof(finalRes); } catch(e) {}
+      try { type = math.typeof(res); } catch(e) {}
       addLog(`Result Type: ${type}`);
 
       // Log raw value safely
-      let rawValStr = String(finalRes);
+      let rawValStr = String(res);
       try {
-          if (typeof finalRes === 'object') rawValStr = JSON.stringify(finalRes);
+          if (typeof res === 'object') rawValStr = JSON.stringify(res);
       } catch (e) {
           rawValStr = '[Complex Object]';
       }
@@ -147,24 +91,19 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery
       }
       
       addLog("Formatting result with precision 14...");
-      const formatted = math.format(finalRes, { precision: 14 });
+      const formatted = math.format(res, { precision: 14 });
       addLog(`Final Output: ${formatted}`);
 
       setResult(formatted);
       
     } catch (err: any) {
       const errMsg = err.message || "Calculation Error";
-      addLog(`Fatal Error: ${errMsg}`);
+      addLog(`Error: ${errMsg}`);
       setError(errMsg);
     } finally {
       setIsProcessing(false);
     }
   };
-
-  const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      executeSolve(input);
-  }
 
   const clearAll = () => {
     setInput('');
@@ -194,18 +133,9 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery
                 </p>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
-            <button 
-                  onClick={handleShare}
-                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-500 relative"
-                  title="Share Direct Link"
-              >
-                  {isCopiedLink ? <Check className="w-5 h-5 text-emerald-500" /> : <Share2 className="w-5 h-5" />}
-            </button>
-            <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-500">
-                <X className="w-5 h-5" />
-            </button>
-          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-500">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
@@ -224,7 +154,7 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery
             </div>
 
             {/* Input Section */}
-            <form onSubmit={handleSubmit} className="mb-6 relative">
+            <form onSubmit={handleSolve} className="mb-6 relative">
                 <div className="relative">
                     <textarea 
                         id="num-input"
@@ -233,7 +163,6 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery
                         placeholder="Enter math problem (e.g. 'average of 10, 20, 30')..."
                         className="w-full pl-4 pr-14 py-4 h-32 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all text-slate-900 dark:text-slate-100 font-mono text-sm resize-none"
                         spellCheck={false}
-                        autoFocus={!initialQuery}
                     />
                     <div className="absolute right-2 bottom-2 flex flex-col space-y-2">
                         <button 

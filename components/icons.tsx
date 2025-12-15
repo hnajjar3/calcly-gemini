@@ -37,8 +37,7 @@ import {
   Trash2,
   Code,
   Globe,
-  Music,
-  Cloud
+  Music
 } from 'lucide-react';
 
 export const Nu = (props: React.SVGProps<SVGSVGElement>) => (
@@ -95,6 +94,5 @@ export {
   Trash2,
   Code,
   Globe,
-  Music,
-  Cloud
+  Music
 };
