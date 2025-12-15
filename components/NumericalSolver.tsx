@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Nu, Play, RefreshCw, AlertTriangle, Terminal, Trash2, Copy, CheckCircle2, Share2, Check } from '../components/icons';
-import { parseNumericalExpression } from '../services/geminiService';
+import { parseNumericalExpression, fixNumericalExpression } from '../services/geminiService';
 
 declare const math: any;
 
@@ -85,20 +85,55 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery
 
       addLog(`Current Variable Scope: [${Object.keys(scope).join(', ')}]`);
 
-      // 2. Execution
-      // math.evaluate can return various types (number, matrix, unit, etc.)
-      addLog("Executing math.evaluate()...");
-      const res = math.evaluate(parsedExpression, scope);
+      // 2. Execution Loop with Retry
+      let attempts = 0;
+      const maxAttempts = 3;
+      let success = false;
+      let finalRes: any = null;
+
+      while(attempts <= maxAttempts && !success) {
+          try {
+              addLog(`Executing math.evaluate()... (Attempt ${attempts + 1})`);
+              
+              // Evaluate
+              finalRes = math.evaluate(parsedExpression, scope);
+              success = true;
+
+          } catch (err: any) {
+              const errMsg = err.message || "Calculation Error";
+              addLog(`Error on attempt ${attempts + 1}: ${errMsg}`);
+
+              if (attempts < maxAttempts) {
+                   addLog("Asking Gemini to fix the expression based on the error...");
+                   try {
+                       const corrected = await fixNumericalExpression(queryToSolve, parsedExpression, errMsg);
+                       if (corrected === parsedExpression) {
+                           addLog("Gemini returned the same expression. Aborting retry.");
+                           // Break to error handler
+                           throw new Error("Unable to auto-correct expression. Please check syntax."); 
+                       }
+                       parsedExpression = corrected;
+                       addLog(`Repaired Expression: "${parsedExpression}"`);
+                   } catch (fixErr) {
+                       addLog("Failed to repair expression.");
+                       throw err; // Throw original error
+                   }
+              } else {
+                  throw new Error("Could not solve after multiple attempts. Please try providing more specific instructions.");
+              }
+          }
+          attempts++;
+      }
       
       // Determine type
       let type = 'unknown';
-      try { type = math.typeof(res); } catch(e) {}
+      try { type = math.typeof(finalRes); } catch(e) {}
       addLog(`Result Type: ${type}`);
 
       // Log raw value safely
-      let rawValStr = String(res);
+      let rawValStr = String(finalRes);
       try {
-          if (typeof res === 'object') rawValStr = JSON.stringify(res);
+          if (typeof finalRes === 'object') rawValStr = JSON.stringify(finalRes);
       } catch (e) {
           rawValStr = '[Complex Object]';
       }
@@ -112,14 +147,14 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery
       }
       
       addLog("Formatting result with precision 14...");
-      const formatted = math.format(res, { precision: 14 });
+      const formatted = math.format(finalRes, { precision: 14 });
       addLog(`Final Output: ${formatted}`);
 
       setResult(formatted);
       
     } catch (err: any) {
       const errMsg = err.message || "Calculation Error";
-      addLog(`Error: ${errMsg}`);
+      addLog(`Fatal Error: ${errMsg}`);
       setError(errMsg);
     } finally {
       setIsProcessing(false);

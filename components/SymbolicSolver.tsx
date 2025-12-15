@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Sigma, Play, RefreshCw, AlertTriangle, Calculator, Terminal, CheckCircle2, Share2, Check } from '../components/icons';
-import { parseMathCommand, MathCommand } from '../services/geminiService';
+import { X, Sigma, Play, RefreshCw, AlertTriangle, Calculator, Terminal, CheckCircle2, Share2, Check, Cloud } from '../components/icons';
+import { parseMathCommand, MathCommand, fixMathCommand } from '../services/geminiService';
 import { LatexRenderer } from './LatexRenderer';
 
 declare const nerdamer: any;
@@ -96,6 +96,15 @@ const formatMatrixToLatex = (str: string): string => {
   return str;
 };
 
+interface ExecutionResult {
+    success: boolean;
+    latex: string;
+    decimal?: string | null;
+    engine?: 'Nerdamer' | 'Algebrite';
+    error?: string;
+    rawOutput?: string;
+}
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -109,7 +118,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery 
   const [decimalResult, setDecimalResult] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [usedEngine, setUsedEngine] = useState<'Nerdamer' | 'Algebrite' | null>(null);
+  const [usedEngine, setUsedEngine] = useState<'Nerdamer' | 'Algebrite' | 'Gemini (Cloud)' | null>(null);
   const [libraryStatus, setLibraryStatus] = useState<{ nerdamer: boolean, algebrite: boolean }>({ nerdamer: false, algebrite: false });
   const [debugLog, setDebugLog] = useState<string[]>([]);
   const [showDebug, setShowDebug] = useState(false);
@@ -160,34 +169,13 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery 
     setTimeout(() => setIsCopied(false), 2000);
   };
 
-  const executeSolve = async (queryToSolve: string) => {
-    if (!queryToSolve.trim() || isProcessing) return;
-
-    setIsProcessing(true);
-    setError(null);
-    setParsedCommand(null);
-    setResultLatex('');
-    setDecimalResult(null);
-    setUsedEngine(null);
-    setDebugLog([]);
-
-    try {
-      addLog("Parsing natural language with Gemini...");
-      const command = await parseMathCommand(queryToSolve);
-      setParsedCommand(command);
-      addLog(`Parsed Command: ${JSON.stringify(command)}`);
-
-      const { operation, expression, variable = 'x', start, end } = command;
-      let solved = false;
-      let finalLatex = '';
-      
-      // --- NERDAMER EXECUTION BLOCK ---
-      const runNerdamer = () => {
+  // --- ENGINE EXECUTION HELPERS ---
+  
+  const runNerdamer = (command: MathCommand): ExecutionResult => {
         const NerdamerEngine = getNerdamer();
-        if (!NerdamerEngine) {
-            addLog("Nerdamer library not found. Skipping.");
-            return false;
-        }
+        if (!NerdamerEngine) return { success: false, latex: '', error: 'Nerdamer not loaded' };
+        
+        const { operation, expression, variable = 'x', start, end } = command;
         
         try {
             if (NerdamerEngine.flush) NerdamerEngine.flush();
@@ -239,26 +227,24 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery 
             addLog(`Nerdamer execution: ${nerdString}`);
             const obj = NerdamerEngine(nerdString);
             const evaluated = obj.evaluate();
-            
             const resultString = evaluated.text();
             addLog(`Nerdamer text output: ${resultString}`);
 
-            // Failure detection
+            // Failure detection (Echo)
             const failKeywords = ['integrate', 'defint', 'sum', 'limit', 'determinant', 'invert', 'taylor'];
             const isFailure = (operation !== 'evaluate') && failKeywords.some(kw => resultString.includes(kw) && resultString.includes('('));
+            
             if (isFailure) {
-                addLog(`Nerdamer returned input (unsolved): ${resultString}`);
-                return false;
+                return { success: false, latex: '', error: `Nerdamer returned input (unsolved): ${resultString}`, rawOutput: resultString };
             }
 
-            // ATTEMPT DECIMAL PRIORITY
+            // Success processing
+            let finalLatex = '';
             let decimalText = '';
-            try {
-               decimalText = evaluated.text('decimals');
-            } catch(e) {}
+            try { decimalText = evaluated.text('decimals'); } catch(e) {}
 
             let useDecimalText = false;
-            if (decimalText && decimalText !== resultString) {
+             if (decimalText && decimalText !== resultString) {
                 if (resultString.startsWith('[') && decimalText.startsWith('[')) {
                     useDecimalText = true;
                 } 
@@ -271,7 +257,6 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery 
             }
 
             if (useDecimalText) {
-                addLog(`Using decimal text: ${decimalText}`);
                 finalLatex = formatDecimalLatex(decimalText);
             } else {
                 if (resultString.startsWith('[') && resultString.includes('.')) {
@@ -284,25 +269,20 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery 
                      finalLatex = evaluated.toTeX();
                 }
             }
-
-            setUsedEngine('Nerdamer');
-            setDecimalResult(null); 
-            return true;
+            
+            return { success: true, latex: finalLatex, engine: 'Nerdamer' };
 
         } catch (nerdError: any) {
-            addLog(`Nerdamer failed: ${nerdError.message}`);
-            return false;
+            return { success: false, latex: '', error: `Nerdamer error: ${nerdError.message}` };
         }
-      };
+  };
 
-      // --- ALGEBRITE EXECUTION BLOCK ---
-      const runAlgebrite = () => {
+  const runAlgebrite = (command: MathCommand): ExecutionResult => {
          const AlgebriteEngine = getAlgebrite();
-         if (!AlgebriteEngine) {
-             addLog("Algebrite library not loaded or failed to load. Skipping.");
-             return false;
-         }
+         if (!AlgebriteEngine) return { success: false, latex: '', error: 'Algebrite not loaded' };
          
+         const { operation, expression, variable = 'x', start, end } = command;
+
          try {
               let algString = '';
               switch (operation) {
@@ -348,36 +328,29 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery 
               addLog(`Algebrite output: ${res}`);
               
               if (!res || res.startsWith("Stop") || res.includes("Stop") || res === 'nil') {
-                 addLog(`Algebrite returned error: ${res}`);
-                 return false;
+                 return { success: false, latex: '', error: `Algebrite error: ${res}` };
+              }
+              
+              // Failure Detection (Echo)
+              const failKeywords = ['integral', 'defint', 'sum', 'roots', 'det', 'inv', 'taylor'];
+              const isFailure = (operation !== 'evaluate') && failKeywords.some(kw => res.includes(kw) && res.includes('('));
+              
+              if (isFailure) {
+                  return { success: false, latex: '', error: `Algebrite returned input (unsolved): ${res}`, rawOutput: res };
               }
 
+              let finalLatex = '';
               let decimalRes = '';
-              try {
-                  decimalRes = AlgebriteEngine.run(`float(${res})`);
-              } catch(e) {}
+              try { decimalRes = AlgebriteEngine.run(`float(${res})`); } catch(e) {}
 
-              if (decimalRes && !decimalRes.includes("Stop")) {
-                  if (decimalRes.startsWith('[') || /^-?\d*\.?\d+(e[-+]?\d+)?$/.test(decimalRes)) {
-                      addLog(`Using Algebrite decimal: ${decimalRes}`);
-                      finalLatex = formatDecimalLatex(decimalRes);
-                  } else {
-                      if (/^\[\s*\[/.test(res)) {
-                           finalLatex = formatMatrixToLatex(res);
-                      } else {
-                           const NerdamerEngine = getNerdamer();
-                           if (NerdamerEngine) {
-                              try { finalLatex = NerdamerEngine(res).toTeX(); } 
-                              catch(nErr) { finalLatex = res.replace(/\*/g, ''); }
-                           } else {
-                              finalLatex = res.replace(/\*/g, '');
-                           }
-                      }
-                  }
+              // Use decimal if applicable
+              if (decimalRes && !decimalRes.includes("Stop") && (decimalRes.startsWith('[') || /^-?\d*\.?\d+(e[-+]?\d+)?$/.test(decimalRes))) {
+                  finalLatex = formatDecimalLatex(decimalRes);
               } else {
-                   if (/^\[\s*\[/.test(res)) {
+                  if (/^\[\s*\[/.test(res)) {
                        finalLatex = formatMatrixToLatex(res);
                   } else {
+                       // Try to convert via Nerdamer .toTeX() if available for better formatting, else raw
                        const NerdamerEngine = getNerdamer();
                        if (NerdamerEngine) {
                           try { finalLatex = NerdamerEngine(res).toTeX(); } 
@@ -387,37 +360,104 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery 
                        }
                   }
               }
-
-              setUsedEngine('Algebrite');
-              setDecimalResult(null); 
-              return true;
+              
+              return { success: true, latex: finalLatex, engine: 'Algebrite' };
 
             } catch (algError: any) {
-              addLog(`Algebrite failed: ${algError.message}`);
-              return false;
+              return { success: false, latex: '', error: `Algebrite exception: ${algError.message}` };
             }
-      };
+  };
 
-      if (command.preferredEngine === 'algebrite') {
-         addLog("Gemini prefers Algebrite for this query.");
-         solved = runAlgebrite();
-         if (!solved) {
-             addLog("Algebrite failed, trying Nerdamer...");
-             solved = runNerdamer();
-         }
-      } else {
-         solved = runNerdamer();
-         if (!solved) {
-             addLog("Nerdamer failed, trying Algebrite...");
-             solved = runAlgebrite();
-         }
+  const executeSolve = async (queryToSolve: string) => {
+    if (!queryToSolve.trim() || isProcessing) return;
+
+    setIsProcessing(true);
+    setError(null);
+    setParsedCommand(null);
+    setResultLatex('');
+    setDecimalResult(null);
+    setUsedEngine(null);
+    setDebugLog([]);
+
+    try {
+      addLog("Parsing natural language with Gemini...");
+      let command = await parseMathCommand(queryToSolve);
+      setParsedCommand(command);
+      addLog(`Parsed Command: ${JSON.stringify(command)}`);
+
+      let solved = false;
+      let finalLatex = '';
+      let engineUsed: 'Nerdamer' | 'Algebrite' | 'Gemini (Cloud)' | null = null;
+      
+      // REFINEMENT LOOP
+      // If local engines fail, we ask Gemini to fix the command and try again.
+      // Increased to 3 attempts (initial + 3 refinements) before failing.
+      const MAX_REFINEMENTS = 3;
+      let attempts = 0;
+      
+      while (attempts <= MAX_REFINEMENTS && !solved) {
+          
+          let result: ExecutionResult = { success: false, latex: '' };
+          let runLogs: string[] = [];
+
+          // 1. Try Preferred Engine first if set
+          if (command.preferredEngine === 'algebrite') {
+             result = runAlgebrite(command);
+             if (!result.success) {
+                 runLogs.push(result.error || "Algebrite failed");
+                 const res2 = runNerdamer(command);
+                 if (res2.success) result = res2;
+                 else runLogs.push(res2.error || "Nerdamer failed");
+             }
+          } else {
+             // Default order: Nerdamer -> Algebrite
+             result = runNerdamer(command);
+             if (!result.success) {
+                 runLogs.push(result.error || "Nerdamer failed");
+                 const res2 = runAlgebrite(command);
+                 if (res2.success) result = res2;
+                 else runLogs.push(res2.error || "Algebrite failed");
+             }
+          }
+
+          if (result.success) {
+              solved = true;
+              finalLatex = result.latex;
+              engineUsed = result.engine || 'Nerdamer';
+              addLog(`Solved by ${engineUsed} on attempt ${attempts + 1}`);
+          } else {
+              // Failed this attempt
+              addLog(`Execution failed on attempt ${attempts + 1}: ${runLogs.join(', ')}`);
+              
+              if (attempts < MAX_REFINEMENTS) {
+                  addLog("Asking Gemini to refine the command based on errors...");
+                  try {
+                      const newCommand = await fixMathCommand(queryToSolve, command, runLogs.join('; '));
+                      // Check if command actually changed to avoid useless loops
+                      if (JSON.stringify(newCommand) === JSON.stringify(command)) {
+                          addLog("Gemini returned identical command. Stopping refinement.");
+                          break;
+                      }
+                      command = newCommand;
+                      setParsedCommand(command); // Update UI
+                      addLog(`Refined Command: ${JSON.stringify(command)}`);
+                  } catch (refineErr) {
+                      addLog("Failed to refine command.");
+                      break;
+                  }
+              }
+          }
+          attempts++;
       }
 
+      // No cloud fallback logic here - intended to save cost.
+      
       if (solved) {
         finalLatex = finalLatex.replace(/\\text{([^}]*)}/g, '$1');
         setResultLatex(finalLatex.startsWith('$$') ? finalLatex : `$$${finalLatex}$$`);
+        setUsedEngine(engineUsed);
       } else {
-        throw new Error("Unable to solve symbolically with available engines.");
+        throw new Error("Unable to solve after multiple attempts. Please try providing more specific instructions (e.g., specify limits or variables).");
       }
 
     } catch (err: any) {
@@ -448,7 +488,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery 
             <div>
                 <h3 className="font-bold text-lg leading-tight">Symbolic Solver</h3>
                 <p className="text-[10px] uppercase tracking-wider font-semibold opacity-70">
-                   Pure Math Engine • Local Execution
+                   Pure Math Engine • Hybrid Execution
                 </p>
             </div>
           </div>
@@ -487,7 +527,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery 
                         type="text" 
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder="e.g., Determinant of [[1,2],[3,4]]"
+                        placeholder="e.g., Sum of 2^n from 1 to N"
                         className="w-full pl-4 pr-14 py-4 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all text-slate-900 dark:text-slate-100"
                         autoFocus={!initialQuery}
                     />
@@ -537,7 +577,11 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose, initialQuery 
                     <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-slate-800 dark:to-slate-800/50 border border-indigo-100 dark:border-indigo-900/30 rounded-xl p-6 shadow-md relative group">
                          {usedEngine && (
                             <div className="absolute top-3 right-3 flex items-center px-2 py-1 rounded-md bg-white/50 dark:bg-black/20 border border-indigo-100 dark:border-indigo-900/20">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-500 mr-1.5" />
+                                {usedEngine === 'Gemini (Cloud)' ? (
+                                    <Cloud className="w-3 h-3 text-sky-500 mr-1.5" />
+                                ) : (
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-500 mr-1.5" />
+                                )}
                                 <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
                                    Solved by {usedEngine}
                                 </span>
