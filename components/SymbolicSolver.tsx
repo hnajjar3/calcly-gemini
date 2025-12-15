@@ -6,6 +6,14 @@ import { LatexRenderer } from './LatexRenderer';
 
 declare const nerdamer: any;
 
+// Explicit list of operations supported by Nerdamer/Algebrite
+// If the parser returns something else (e.g., 'fourierTransform'), we skip local engines and go to AI
+const LOCAL_SUPPORTED_OPS = [
+  'integrate', 'differentiate', 'solve', 'simplify', 
+  'factor', 'limit', 'sum', 'evaluate', 
+  'determinant', 'invert', 'taylor'
+];
+
 // Helper to safely access Algebrite from window object
 const getAlgebrite = () => {
   // @ts-ignore
@@ -180,6 +188,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
             if (NerdamerEngine.flush) NerdamerEngine.flush();
 
             let nerdString = '';
+            // Only strictly supported ops are passed here
             switch (operation) {
               case 'integrate':
                 if (start !== undefined && end !== undefined) {
@@ -239,7 +248,6 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
             }
             
             // Heuristic: If operation is evaluate but result is identical to input (ignoring spaces), treat as failure
-            // This catches things like "Fourier Transform of..." returning "Fourier Transform of..."
             const cleanResult = resultString.replace(/\s/g, '');
             const cleanInput = expression.replace(/\s/g, '');
             if (operation === 'evaluate' && cleanResult === cleanInput && cleanInput.length > 5 && !/^\d+$/.test(cleanInput)) {
@@ -311,6 +319,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
          
          try {
               let algString = '';
+              // Only strictly supported ops are passed here
               switch (operation) {
                 case 'integrate':
                   if (start !== undefined && end !== undefined) {
@@ -410,29 +419,36 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
 
       // --- DYNAMIC EXECUTION FLOW ---
       
-      if (command.preferredEngine === 'algebrite') {
-         addLog("Gemini prefers Algebrite for this query.");
-         solved = runAlgebrite();
-         if (!solved) {
-             addLog("Algebrite failed, trying Nerdamer...");
-             solved = runNerdamer();
-         }
-      } else {
-         solved = runNerdamer();
-         if (!solved) {
-             addLog("Nerdamer failed, trying Algebrite...");
+      // Check if operation is supported by local engines
+      const isSupportedLocally = LOCAL_SUPPORTED_OPS.includes(operation);
+
+      if (isSupportedLocally) {
+          if (command.preferredEngine === 'algebrite') {
+             addLog("Gemini prefers Algebrite for this query.");
              solved = runAlgebrite();
-         }
+             if (!solved) {
+                 addLog("Algebrite failed, trying Nerdamer...");
+                 solved = runNerdamer();
+             }
+          } else {
+             solved = runNerdamer();
+             if (!solved) {
+                 addLog("Nerdamer failed, trying Algebrite...");
+                 solved = runAlgebrite();
+             }
+          }
+      } else {
+          addLog(`Operation '${operation}' is not supported by local engines.`);
       }
 
-      // AI FALLBACK: If local engines fail, ask Gemini
+      // AI FALLBACK: If local engines fail or operation is unsupported, ask Gemini
       if (!solved) {
-         addLog("Local engines failed or could not solve. Attempting AI Fallback...");
+         addLog("Local engines failed or operation unsupported. Attempting AI Fallback...");
          try {
              const aiResult = await solveMathWithAI(input);
              if (aiResult && aiResult.length > 0 && !aiResult.toLowerCase().includes("no solution")) {
                  finalLatex = aiResult;
-                 setUsedEngine('Gemini (AI)');
+                 setUsedEngine('Gemini Pro (AI)');
                  addLog(`AI Fallback result: ${aiResult}`);
                  solved = true;
              }

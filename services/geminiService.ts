@@ -406,7 +406,7 @@ export const solveQuery = async (
 };
 
 export interface MathCommand {
-  operation: 'integrate' | 'differentiate' | 'solve' | 'simplify' | 'factor' | 'limit' | 'sum' | 'evaluate' | 'determinant' | 'invert' | 'taylor';
+  operation: string; // Generalized to string to allow unsupported ops like 'fourier'
   expression: string;
   variable?: string;
   start?: string;
@@ -422,13 +422,18 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
 
     OUTPUT JSON SCHEMA:
     {
-      "operation": "integrate" | "differentiate" | "solve" | "simplify" | "factor" | "limit" | "sum" | "evaluate" | "determinant" | "invert" | "taylor",
+      "operation": "string", 
       "expression": "string",
       "variable": "string (optional, default 'x')",
       "start": "string (optional)",
       "end": "string (optional)",
       "preferredEngine": "nerdamer" | "algebrite" (optional)
     }
+
+    OPERATION RULES:
+    1. If the request is a standard operation, use one of: 'integrate', 'differentiate', 'solve', 'simplify', 'factor', 'limit', 'sum', 'evaluate', 'determinant', 'invert', 'taylor'.
+    2. If the request is a specific named operation (e.g., "Fourier Transform", "Laplace Transform", "Eigenvalues"), use that specific name (e.g., "fourierTransform").
+    3. Do NOT use "evaluate" as a catch-all for complex transforms.
   `;
 
   try {
@@ -525,11 +530,11 @@ export const explainMathResult = async (query: string, result: string, engine: s
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-pro-preview', // UPGRADE TO PRO
       contents: { parts: [{ text: "Explain the steps." }] },
       config: {
         systemInstruction: systemInstruction,
-        thinkingConfig: { thinkingBudget: 0 }, 
+        thinkingConfig: { thinkingBudget: 2048 }, 
       }
     });
 
@@ -556,11 +561,11 @@ export const solveMathWithAI = async (query: string): Promise<string> => {
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-pro-preview', // UPGRADE TO PRO
       contents: { parts: [{ text: query }] },
       config: {
         systemInstruction: systemInstruction,
-        thinkingConfig: { thinkingBudget: 0 },
+        thinkingConfig: { thinkingBudget: 2048 },
       }
     });
 
