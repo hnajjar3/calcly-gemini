@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { SolverResponse, ModelMode } from "../types";
 
 declare global {
@@ -11,8 +11,6 @@ declare global {
 }
 
 // DEMO KEY for Open Source usage (Fallback)
-// NOTE: This is a placeholder. For the app to function correctly, 
-// you must provide a valid API key in your .env file or build environment.
 const DEMO_API_KEY = "AIzaSy_DEMO_KEY_PLACEHOLDER_CHANGE_ME"; 
 
 // Helper to ensure API key presence
@@ -35,19 +33,37 @@ const getApiKey = (): string => {
   return DEMO_API_KEY;
 };
 
+// Helper: Promise Timeout Wrapper to prevent hanging requests
+const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            reject(new Error("Request Timed Out"));
+        }, ms);
+
+        promise.then(
+            (value) => {
+                clearTimeout(timer);
+                resolve(value);
+            },
+            (err) => {
+                clearTimeout(timer);
+                reject(err);
+            }
+        );
+    });
+};
+
 // Centralized Error Handler
 const handleGeminiError = (error: any): never => {
   console.error("Gemini API Error details:", error);
   
   let msg = error.message || error.toString();
   
-  // Handle structured error objects coming directly from the API response (Raw JSON)
-  // Example: {"error":{"code":429,"message":"...","status":"RESOURCE_EXHAUSTED"}}
+  // Handle structured error objects coming directly from the API response
   if (error.error) {
       if (error.error.message) {
           msg = error.error.message;
       }
-      // Explicitly check for Quota codes in the raw error object
       if (error.error.code === 429 || error.error.status === 'RESOURCE_EXHAUSTED') {
           msg = "Quota exceeded"; 
       }
@@ -57,7 +73,7 @@ const handleGeminiError = (error: any): never => {
 
   // Handle Quota/Rate Limits (429)
   if (lowerMsg.includes('429') || lowerMsg.includes('quota') || lowerMsg.includes('resource_exhausted')) {
-    throw new Error("⚠️ API Quota Exceeded. You have reached the usage limit for your API key. Please try again later or check your billing details.");
+    throw new Error("⚠️ API Quota Exceeded. You have reached the usage limit for your API key.");
   }
   
   // Handle Auth Errors (400/403)
@@ -70,10 +86,14 @@ const handleGeminiError = (error: any): never => {
     throw new Error("⚠️ AI Service Overloaded. Please try again in a few seconds.");
   }
   
-  // Filter out raw JSON if possible to make it readable
+  // Handle Timeouts
+  if (lowerMsg.includes('timed out')) {
+     throw new Error("⚠️ Request Timed Out. The model took too long to respond.");
+  }
+
+  // Filter out raw JSON if possible
   if (msg.includes('{')) {
       try {
-          // Attempt to extract message from JSON string if present
           const jsonMatch = msg.match(/\{.*\}/);
           if (jsonMatch) {
               const parsed = JSON.parse(jsonMatch[0]);
@@ -89,7 +109,7 @@ const handleGeminiError = (error: any): never => {
   throw new Error(msg || "An unexpected error occurred connecting to AI.");
 };
 
-// Define the schema definition string for the prompt since we can't pass the object to config when using tools
+// Define the schema definition string for the prompt
 const schemaDefinition = `
 {
   "type": "OBJECT",
@@ -171,24 +191,18 @@ const schemaDefinition = `
 // Robust JSON Extractor
 const extractJSON = (raw: string, requiredKey?: string): string => {
   let text = raw.trim();
-
-  // 1. Try markdown code block extraction
   const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
   if (jsonBlockMatch) return jsonBlockMatch[1];
   
   const genericBlockMatch = text.match(/```\s*([\s\S]*?)\s*```/);
   if (genericBlockMatch) return genericBlockMatch[1];
 
-  // 2. Heuristic: Look for specific schema keys to find the real start if provided
   if (requiredKey) {
     const keyIndex = text.indexOf(`"${requiredKey}"`);
     if (keyIndex !== -1) {
-        // Find the opening brace belonging to this key. 
-        // It should be the closest '{' before this key.
         const sub = text.substring(0, keyIndex);
         const realStart = sub.lastIndexOf('{');
         if (realStart !== -1) {
-            // Find the last '}'
             const realEnd = text.lastIndexOf('}');
             if (realEnd > realStart) {
                 return text.substring(realStart, realEnd + 1);
@@ -197,7 +211,6 @@ const extractJSON = (raw: string, requiredKey?: string): string => {
     }
   }
 
-  // 3. Fallback: Naive brace extraction (first { to last })
   const firstBrace = text.indexOf('{');
   const lastBrace = text.lastIndexOf('}');
   if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
@@ -207,127 +220,76 @@ const extractJSON = (raw: string, requiredKey?: string): string => {
   return text; 
 };
 
-export const solveQuery = async (
-  query: string, 
-  mode: ModelMode = 'pro',
-  imageBase64?: string,
-  audioBase64?: string,
-  context?: { previousQuery: string; previousResult: string }
+// Internal function to attempt generation with specific model
+const attemptGenerate = async (
+    modelMode: ModelMode,
+    parts: any[]
 ): Promise<SolverResponse> => {
-  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
+    const modelName = modelMode === 'pro' ? 'gemini-3-pro-preview' : 'gemini-2.5-flash';
+    // Use conservative thinking budget to help with quota issues, or 0 for flash
+    const thinkingBudget = modelMode === 'pro' ? 2048 : 0; 
 
-  // Prompt engineering to guide the model towards Wolfram-like behavior
-  let systemInstruction = `
-    You are OmniSolver, an advanced computational intelligence engine similar to Wolfram Alpha.
-    Your goal is to provide precise, structured, and factual answers.
-    
-    CRITICAL RULES:
-    1.  **Structure**: The 'result' field is an ARRAY of objects. 
-        - You can mix Markdown text and LaTeX math in 'markdown' parts.
-        - **IMPORTANT**: If you use LaTeX math, YOU MUST wrap it in single \`$\` (inline) or double \`$$\` (block).
-    2.  **Tables**: For data comparisons, nutritional info, or specs, USE type 'table' in 'sections' and populate 'tableData'.
-    3.  **Visualization (Charts)**:
-        - If the query implies comparison, statistics, trends, or distribution, YOU MUST generate a 'chart' object.
-        - **Format**: Return a JSON structure compatible with Chart.js:
-          - 'labels': An array of strings for the X-axis (e.g. ["Protein", "Fat", "Carbs"]).
-          - 'datasets': An array of objects, each with a 'label' (series name) and 'data' (array of numbers).
-        - **Comparisons**: For "Hummus vs Guacamole", provide ONE chart with 'labels' as the nutrients and TWO 'datasets' (one for Hummus, one for Guacamole).
-        - **Composition**: Use type 'pie' or 'doughnut' for breakdowns.
-        - **Profiles**: Use type 'radar' for comparing multi-attribute profiles (e.g. nutrition, stats).
-        - **Trends**: Use type 'line' for time series.
-        - **Magnitudes**: Use type 'bar' for comparing amounts.
-    4.  **Accuracy**: Use the googleSearch tool if the query requires up-to-date information.
-    5.  **Format**: Return ONLY valid raw JSON matching the schema below.
-    
-    SCHEMA:
-    ${schemaDefinition}
-  `;
-
-  // Inject specific instructions for Flash vs Pro to optimize output tokens and quality
-  if (mode === 'flash') {
-    systemInstruction += `
-    
-    [STRICT MODE: FLASH]
-    1. **EXTREME CONCISENESS**: Output ONLY the final answer. No filler words. Max 1-2 sentences.
-    2. **SIMPLICITY**: Do not use complex Markdown or nested structures. Use plain text where possible.
-    3. **STRUCTURE**: 
-       - 'result': The short text answer (max 40 words).
-       - 'sections': KEEP EMPTY [] unless a code block is strictly required.
-       - 'chart': DO NOT GENERATE charts.
-       - 'suggestions': Max 2 items.
-    4. **INTERPRETATION**: Max 3-5 words.
-    5. **NO CONVERSATION**: Do not say "Here is the answer". Just give the answer.
+    // Prompt engineering
+    let systemInstruction = `
+      You are OmniSolver, an advanced computational intelligence engine similar to Wolfram Alpha.
+      Your goal is to provide precise, structured, and factual answers.
+      
+      CRITICAL RULES:
+      1.  **Structure**: The 'result' field is an ARRAY of objects. 
+          - You can mix Markdown text and LaTeX math in 'markdown' parts.
+          - **IMPORTANT**: If you use LaTeX math, YOU MUST wrap it in single \`$\` (inline) or double \`$$\` (block).
+      2.  **Tables**: For data comparisons, nutritional info, or specs, USE type 'table' in 'sections' and populate 'tableData'.
+      3.  **Visualization (Charts)**:
+          - If the query implies comparison, statistics, trends, or distribution, YOU MUST generate a 'chart' object.
+          - **Format**: Return a JSON structure compatible with Chart.js:
+            - 'labels': An array of strings for the X-axis (e.g. ["Protein", "Fat", "Carbs"]).
+            - 'datasets': An array of objects, each with a 'label' (series name) and 'data' (array of numbers).
+      4.  **Accuracy**: Use the googleSearch tool if the query requires up-to-date information.
+      5.  **Format**: Return ONLY valid raw JSON matching the schema below.
+      
+      SCHEMA:
+      ${schemaDefinition}
     `;
-  } else {
-     systemInstruction += `
-     
-     [MODE: PRO INTELLIGENCE]
-     - Provide comprehensive, deep, and detailed explanations.
-     - Use multiple sections to cover different aspects of the query.
-     - Show your reasoning where applicable.
-     - Use charts and visualizations where helpful.
-     `;
-  }
 
-  // Select model based on mode
-  const modelName = mode === 'pro' ? 'gemini-3-pro-preview' : 'gemini-2.5-flash';
-  const thinkingBudget = mode === 'pro' ? 4096 : 0;
-
-  try {
-    const parts: any[] = [];
-    
-    // Inject Context if available
-    if (context) {
-        parts.push({ 
-            text: `[CONTEXT FROM PREVIOUS TURN]\nUser Question: "${context.previousQuery}"\nAI Answer: "${context.previousResult}"\n\n[CURRENT QUESTION]\n` 
-        });
-    }
-    
-    if (query) {
-      parts.push({ text: query });
-    } else if (audioBase64) {
-      parts.push({ text: "Please listen to the attached audio and solve the problem described." });
+    if (modelMode === 'flash') {
+      systemInstruction += `
+      [STRICT MODE: FLASH]
+      1. **EXTREME CONCISENESS**: Output ONLY the final answer. Max 1-2 sentences.
+      2. **SIMPLICITY**: Do not use complex Markdown.
+      3. **STRUCTURE**: 'result' max 40 words. 'sections' empty unless code required. No Charts.
+      4. **INTERPRETATION**: Max 3-5 words.
+      `;
+    } else {
+       systemInstruction += `
+       [MODE: PRO INTELLIGENCE]
+       - Provide comprehensive, deep, and detailed explanations.
+       - Use multiple sections to cover different aspects of the query.
+       - Show your reasoning where applicable.
+       - Use charts and visualizations where helpful.
+       `;
     }
 
-    if (imageBase64) {
-      const base64Data = imageBase64.split(',')[1] || imageBase64;
-      parts.push({
-        inlineData: {
-          mimeType: "image/jpeg", 
-          data: base64Data
-        }
-      });
-    }
+    // Set Timeout: 45s for Pro (thinking takes time), 20s for Flash
+    const timeoutMs = modelMode === 'pro' ? 45000 : 20000;
 
-    if (audioBase64) {
-       const base64Data = audioBase64.split(',')[1] || audioBase64;
-       parts.push({
-         inlineData: {
-           mimeType: "audio/webm",
-           data: base64Data
-         }
-       });
-    }
+    const response = await withTimeout<GenerateContentResponse>(
+      ai.models.generateContent({
+        model: modelName,
+        contents: { parts },
+        config: {
+          systemInstruction: systemInstruction,
+          tools: [{ googleSearch: {} }],
+          thinkingConfig: { thinkingBudget },
+        },
+      }),
+      timeoutMs
+    );
 
-    if (parts.length === 0) {
-        throw new Error("No input provided (text, image, or audio).");
-    }
-
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: { parts },
-      config: {
-        systemInstruction: systemInstruction,
-        tools: [{ googleSearch: {} }],
-        thinkingConfig: { thinkingBudget },
-      },
-    });
-
-    let text = response.text;
-    if (!text) throw new Error("No response received from Gemini.");
+    let text = response.text || "";
+    if (!text) throw new Error("No response content received from Gemini.");
 
     const jsonText = extractJSON(text, 'interpretation');
-
     let parsed: SolverResponse;
     try {
       parsed = JSON.parse(jsonText) as SolverResponse;
@@ -371,7 +333,78 @@ export const solveQuery = async (
     if (!parsed.sections) parsed.sections = [];
 
     return parsed;
-  } catch (error) {
+};
+
+export const solveQuery = async (
+  query: string, 
+  mode: ModelMode = 'pro',
+  imageBase64?: string,
+  audioBase64?: string,
+  context?: { previousQuery: string; previousResult: string }
+): Promise<SolverResponse> => {
+
+  // Prepare Parts
+  const parts: any[] = [];
+  if (context) {
+      parts.push({ 
+          text: `[CONTEXT FROM PREVIOUS TURN]\nUser Question: "${context.previousQuery}"\nAI Answer: "${context.previousResult}"\n\n[CURRENT QUESTION]\n` 
+      });
+  }
+  
+  if (query) {
+    parts.push({ text: query });
+  } else if (audioBase64) {
+    parts.push({ text: "Please listen to the attached audio and solve the problem described." });
+  }
+
+  if (imageBase64) {
+    const base64Data = imageBase64.split(',')[1] || imageBase64;
+    parts.push({ inlineData: { mimeType: "image/jpeg", data: base64Data } });
+  }
+
+  if (audioBase64) {
+     const base64Data = audioBase64.split(',')[1] || audioBase64;
+     parts.push({ inlineData: { mimeType: "audio/webm", data: base64Data } });
+  }
+
+  if (parts.length === 0) {
+      throw new Error("No input provided (text, image, or audio).");
+  }
+
+  try {
+    // Attempt 1: Try with requested mode
+    return await attemptGenerate(mode, parts);
+  } catch (error: any) {
+    // FALLBACK LOGIC
+    const isPro = mode === 'pro';
+    const msg = error.message || error.toString();
+    const lowerMsg = msg.toLowerCase();
+    
+    // Check if error is recoverable via model switch (Quota, Timeout, Server Error)
+    const isQuota = lowerMsg.includes("429") || lowerMsg.includes("quota") || lowerMsg.includes("resource_exhausted");
+    const isTimeout = lowerMsg.includes("timed out");
+    const isServerErr = lowerMsg.includes("503") || lowerMsg.includes("overloaded");
+
+    if (isPro && (isQuota || isTimeout || isServerErr)) {
+        console.warn(`Pro model failed (${msg}). Falling back to Flash.`);
+        try {
+            const flashResult = await attemptGenerate('flash', parts);
+            
+            // Annotate the result to inform the user
+            let note = "(⚡ Switched to Flash model due to high traffic)";
+            if (isTimeout) note = "(⚡ Switched to Flash model due to timeout)";
+            
+            flashResult.interpretation = flashResult.interpretation 
+                ? `${flashResult.interpretation} ${note}`
+                : `Result ${note}`;
+                
+            return flashResult;
+        } catch (fallbackError) {
+            // If fallback also fails, throw the original or fallback error
+            handleGeminiError(fallbackError);
+        }
+    }
+
     handleGeminiError(error);
   }
 };
