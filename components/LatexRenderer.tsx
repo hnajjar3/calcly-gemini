@@ -24,12 +24,6 @@ export const splitLatex = (text: string): LatexToken[] => {
     // Check for Block Math $$
     if (text.startsWith('$$', i) && (i === 0 || text[i - 1] !== '\\')) {
       // Found potential block start
-      
-      // Flush preceding text
-      if (i > lastIndex) {
-        tokens.push({ type: 'text', content: text.slice(lastIndex, i) });
-      }
-      
       let j = i + 2;
       let foundEnd = false;
       while (j < text.length) {
@@ -42,6 +36,10 @@ export const splitLatex = (text: string): LatexToken[] => {
       }
 
       if (foundEnd) {
+        // Flush preceding text only when we confirm we found a block
+        if (i > lastIndex) {
+          tokens.push({ type: 'text', content: text.slice(lastIndex, i) });
+        }
         tokens.push({ type: 'block', content: text.slice(i + 2, j) });
         i = j + 2;
         lastIndex = i;
@@ -57,12 +55,6 @@ export const splitLatex = (text: string): LatexToken[] => {
        if (i + 1 < text.length && /\s/.test(text[i+1])) {
           i++; 
           continue;
-       }
-
-       // Flush preceding text
-       if (i > lastIndex) {
-          tokens.push({ type: 'text', content: text.slice(lastIndex, i) });
-          // Note: don't update lastIndex yet, we only flush if we confirm it's math
        }
 
        let j = i + 1;
@@ -81,12 +73,9 @@ export const splitLatex = (text: string): LatexToken[] => {
        }
 
        if (foundEnd) {
-         // Now flush text
+         // Flush preceding text only when we confirm we found math
          if (i > lastIndex) {
-           // We already created the logic to push, but let's do it cleanly here
-           // Actually, we need to push text ONLY if we found the math.
-           // The previous flush was speculative if we didn't use `continue`.
-           // Let's reset tokens push logic.
+            tokens.push({ type: 'text', content: text.slice(lastIndex, i) });
          }
          
          tokens.push({ type: 'inline', content: text.slice(i + 1, j) });

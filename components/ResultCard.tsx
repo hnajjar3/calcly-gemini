@@ -67,6 +67,7 @@ const CodeBlock: React.FC<{ code: string; language?: string }> = ({ code, langua
 
 // Component to render robust Markdown + LaTeX using safe parser
 const RobustMarkdown: React.FC<{ content: string }> = ({ content }) => {
+  if (!content) return null;
   
   // Use safe tokenizer instead of regex with lookbehind
   const tokens = splitLatex(content);
@@ -226,8 +227,34 @@ export const ResultCard: React.FC<Props> = ({ item, isDarkMode, onRetry, onSugge
       <div className="p-6 bg-indigo-50/50 dark:bg-indigo-900/10">
          <div className="text-lg text-slate-800 dark:text-slate-100 leading-relaxed font-medium">
             {response.result.map((part, idx) => {
+              if (!part.content || !part.content.trim()) return null;
+
               if (part.type === 'latex') {
-                return <LatexRenderer key={idx} content={`$$${part.content}$$`} className="my-2 block" />;
+                let clean = part.content.trim();
+                
+                // Recursively strip delimiters to handle double-wrapping (e.g. $$$$ ... $$$$)
+                // or mixed delimiters ($ ... $) returned by AI to ensure we have raw latex
+                let changed = true;
+                while (changed) {
+                    changed = false;
+                    if (clean.startsWith('$$') && clean.endsWith('$$') && clean.length >= 4) {
+                        clean = clean.slice(2, -2).trim();
+                        changed = true;
+                    } else if (clean.startsWith('$') && clean.endsWith('$') && clean.length >= 2) {
+                        clean = clean.slice(1, -1).trim();
+                        changed = true;
+                    } else if (clean.startsWith('\\(') && clean.endsWith('\\)') && clean.length >= 4) {
+                        clean = clean.slice(2, -2).trim();
+                        changed = true;
+                    } else if (clean.startsWith('\\[') && clean.endsWith('\\]') && clean.length >= 4) {
+                        clean = clean.slice(2, -2).trim();
+                        changed = true;
+                    }
+                }
+                
+                if (!clean) return null;
+                // Cleanly wrap in block math
+                return <LatexRenderer key={idx} content={`$$${clean}$$`} className="my-2 block" />;
               } else {
                 // Use RobustMarkdown for main result text to handle potential nested block markdown and LaTeX
                 return <RobustMarkdown key={idx} content={part.content} />;
