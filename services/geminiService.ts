@@ -218,7 +218,8 @@ const attemptGenerate = async (
     parts: any[]
 ): Promise<SolverResponse> => {
     const ai = new GoogleGenAI({ apiKey: getApiKey() });
-    const modelName = modelMode === 'pro' ? 'gemini-3-pro-preview' : 'gemini-2.5-flash';
+    // Switch to gemini-2.5-pro for Pro mode to reduce rate limiting while keeping high intelligence
+    const modelName = modelMode === 'pro' ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
     // Use conservative thinking budget to help with quota issues, or 0 for flash
     const thinkingBudget = modelMode === 'pro' ? 2048 : 0; 
 
@@ -417,9 +418,9 @@ export interface MathCommand {
 export const parseMathCommand = async (query: string): Promise<MathCommand> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
-  // Use Gemini 3 Pro for higher reasoning capability and strict adherence to syntax rules
-  // The user reported Flash was failing to generate correct 'limit' syntax.
-  const modelName = 'gemini-3-pro-preview';
+  // Use Gemini 2.5 Pro for parsing. It offers better rate limits than 3-Pro-Preview
+  // while still maintaining excellent reasoning capabilities for syntax generation.
+  const modelName = 'gemini-2.5-pro';
   const thinkingBudget = 2048; 
 
   const systemInstruction = `
