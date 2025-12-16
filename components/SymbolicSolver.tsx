@@ -104,6 +104,25 @@ const formatMatrixToLatex = (str: string): string => {
   return str;
 };
 
+// Normalization Helpers for Infinity/Constants
+const toNerdamerVal = (val?: string) => {
+  if (!val) return '';
+  const v = val.toLowerCase();
+  if (v === 'inf' || v === 'infinity' || v === 'forever') return 'Infinity';
+  if (v === 'pi') return 'PI';
+  if (v === 'e') return 'E';
+  return val;
+};
+
+const toAlgebriteVal = (val?: string) => {
+  if (!val) return '';
+  const v = val.toLowerCase();
+  if (v === 'infinity' || v === 'inf') return 'inf';
+  // Algebrite often handles 'pi' and 'e' naturally, but lower case is safer for pi
+  if (v === 'pi') return 'pi'; 
+  return val;
+};
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -186,7 +205,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
 
     try {
       // 1. PARSE PHASE
-      addLog("Parsing natural language with Gemini...");
+      addLog("Parsing natural language with Gemini (Pro)...");
       const command = await parseMathCommand(input);
       setParsedCommand(command);
       addLog(`Parsed Command: ${JSON.stringify(command)}`);
@@ -213,7 +232,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
             switch (operation) {
               case 'integrate':
                 if (start !== undefined && end !== undefined) {
-                  nerdString = `defint(${expression}, ${start}, ${end}, ${variable})`;
+                  nerdString = `defint(${expression}, ${toNerdamerVal(start)}, ${toNerdamerVal(end)}, ${variable})`;
                 } else {
                   nerdString = `integrate(${expression}, ${variable})`;
                 }
@@ -230,10 +249,11 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                 }
                 break;
               case 'sum':
-                 nerdString = `sum(${expression}, ${variable}, ${start || '0'}, ${end || '10'})`;
+                 nerdString = `sum(${expression}, ${variable}, ${toNerdamerVal(start) || '0'}, ${toNerdamerVal(end) || '10'})`;
                  break;
               case 'limit':
-                 nerdString = `limit(${expression}, ${variable}, ${end || 'Infinity'})`;
+                 // limit(expr, var, val)
+                 nerdString = `limit(${expression}, ${variable}, ${toNerdamerVal(end) || 'Infinity'})`;
                  break;
               case 'factor':
                  nerdString = `factor(${expression})`;
@@ -245,7 +265,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                  nerdString = `invert(${formatMatrixForNerdamer(expression)})`;
                  break;
               case 'taylor':
-                 nerdString = `taylor(${expression}, ${variable}, ${end || '4'}, ${start || '0'})`;
+                 nerdString = `taylor(${expression}, ${variable}, ${toNerdamerVal(end) || '4'}, ${toNerdamerVal(start) || '0'})`;
                  break;
               case 'simplify':
               case 'evaluate':
@@ -307,8 +327,11 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
               let algString = '';
               switch (operation) {
                 case 'integrate':
-                  if (start !== undefined && end !== undefined) algString = `defint(${expression},${variable},${start},${end})`;
-                  else algString = variable === 'x' ? `integral(${expression})` : `integral(${expression},${variable})`;
+                  if (start !== undefined && end !== undefined) {
+                      algString = `defint(${expression},${variable},${toAlgebriteVal(start)},${toAlgebriteVal(end)})`;
+                  } else {
+                      algString = variable === 'x' ? `integral(${expression})` : `integral(${expression},${variable})`;
+                  }
                   break;
                 case 'differentiate':
                   algString = `d(${expression},${variable})`;
@@ -317,12 +340,22 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                    if (expression.includes(',')) algString = `roots(${expression})`; 
                    else algString = `roots(${expression},${variable})`;
                    break;
-                case 'sum': algString = `sum(${expression},${variable},${start},${end})`; break;
+                case 'sum': 
+                   algString = `sum(${expression},${variable},${toAlgebriteVal(start)},${toAlgebriteVal(end)})`; 
+                   break;
+                case 'limit':
+                   // Algebrite doesn't have a direct 'limit' function exposed as nicely as others sometimes,
+                   // or it might rely on simplification. But Algebrite documentation mentions 'limit' is not fully supported in all versions.
+                   // However, often integral/defint handles limits. 
+                   // If algebrite fails, we naturally fallback to AI, which is good.
+                   // Let's try to support it if it exists or pass expression to simplify
+                   algString = `limit(${expression},${variable},${toAlgebriteVal(end)})`;
+                   break;
                 case 'factor': algString = `factor(${expression})`; break;
                 case 'simplify': algString = `simplify(${expression})`; break;
                 case 'determinant': algString = `det(${formatMatrixForAlgebrite(expression)})`; break;
                 case 'invert': algString = `inv(${formatMatrixForAlgebrite(expression)})`; break;
-                case 'taylor': algString = `taylor(${expression},${variable},${start || '0'},${end || '4'})`; break;
+                case 'taylor': algString = `taylor(${expression},${variable},${toAlgebriteVal(start) || '0'},${toAlgebriteVal(end) || '4'})`; break;
                 default: algString = expression;
               }
 

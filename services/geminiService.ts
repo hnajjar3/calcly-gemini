@@ -417,8 +417,14 @@ export interface MathCommand {
 export const parseMathCommand = async (query: string): Promise<MathCommand> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
+  // Use Gemini 3 Pro for higher reasoning capability and strict adherence to syntax rules
+  // The user reported Flash was failing to generate correct 'limit' syntax.
+  const modelName = 'gemini-3-pro-preview';
+  const thinkingBudget = 2048; 
+
   const systemInstruction = `
-    You are a math syntax parser. Your goal is to map natural language math queries into a strict JSON command structure for a symbolic engine.
+    You are a Math Syntax Expert and Command Generator for symbolic math engines (Nerdamer, Algebrite).
+    Your goal is to normalize natural language math queries into a strict, standardized JSON structure.
 
     OUTPUT JSON SCHEMA:
     {
@@ -430,25 +436,37 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
       "preferredEngine": "nerdamer" | "algebrite" (optional)
     }
 
-    CRITICAL RULES:
-    1. **Expression Extraction**: Extract ONLY the mathematical part of the query for the 'expression' field.
-       - Query: "Differentiate x^2" -> operation: "differentiate", expression: "x^2" (NOT "Differentiate x^2")
-       - Query: "integrate sin(x) from 0 to 1" -> operation: "integrate", expression: "sin(x)", start: "0", end: "1"
-       - Query: "derive tan(x)" -> operation: "differentiate", expression: "tan(x)"
-    2. **Synonyms**: Map natural language to standard operations:
-       - "derive", "derivative", "slope" -> "differentiate"
-       - "antiderivative", "area under curve" -> "integrate"
-       - "roots", "zeros" -> "solve"
-    3. If the request is a specific named operation (e.g., "Fourier Transform"), use that specific name (e.g., "fourierTransform").
+    NORMALIZATION RULES (CRITICAL):
+    1. **Infinity**: ALWAYS map 'inf', 'infinity', 'forever' to the string "Infinity".
+       - Incorrect: "inf"
+       - Correct: "Infinity"
+    2. **Constants**: Map 'pi' to 'PI' (unless it's a variable), 'e' to 'E'.
+    3. **Expression Cleanup**:
+       - Ensure function parentheses: 'sin x' -> 'sin(x)'
+       - Ensure explicit multiplication: '2x' -> '2*x' (optional but safer)
+       - Matrix: '[[1,2],[3,4]]' format is standard.
+    4. **Operation Mapping**:
+       - "Limit of 1/x as x goes to infinity" 
+         -> { "operation": "limit", "expression": "1/x", "variable": "x", "end": "Infinity" }
+       - "Integrate x^2 from 0 to 5"
+         -> { "operation": "integrate", "expression": "x^2", "variable": "x", "start": "0", "end": "5" }
+       - "Derive/Differentiate tan(x)"
+         -> { "operation": "differentiate", "expression": "tan(x)", "variable": "x" }
+       - "Solve x^2 - 1 = 0"
+         -> { "operation": "solve", "expression": "x^2 - 1 = 0", "variable": "x" }
+    
+    5. **Operation Types**: 
+       Supported: integrate, differentiate, solve, simplify, factor, limit, sum, evaluate, determinant, invert, taylor.
+       If complex (e.g. Fourier), return that specific name (e.g. "fourierTransform").
   `;
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: modelName,
       contents: { parts: [{ text: query }] },
       config: {
         systemInstruction: systemInstruction,
-        thinkingConfig: { thinkingBudget: 0 },
+        thinkingConfig: { thinkingBudget }, // Enable thinking for better parsing
         responseMimeType: 'application/json'
       }
     });
@@ -476,7 +494,6 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
       return { operation: 'evaluate', expression: query, preferredEngine: 'nerdamer' };
     }
   } catch (error) {
-    // If parsing fails due to API error, fall back to local eval
     console.warn("Parse API failed, falling back to local eval:", error);
     return { operation: 'evaluate', expression: query, preferredEngine: 'nerdamer' };
   }
@@ -524,9 +541,9 @@ export const validateMathResult = async (query: string, result: string): Promise
     
     Check for:
     1. **Echoing**: Is the result just the input query repeated (e.g. "integrate x" -> "integrate(x)")? This is INVALID.
-    2. **Unsolved Functions**: Does the result contain function calls like 'integrate(...)', 'diff(...)', 'defint(...)'? This is INVALID.
-    3. **Error Messages**: Does it look like an error (e.g. "Stop", "nil", "undefined")? This is INVALID.
-    4. **Simplification**: If the query was 'simplify', echoing is allowed only if the expression is already simple.
+    2. **Intermediate Forms**: Does the result contain unprocessed terms like "inf^(-1)" or "limit(...)"? This is INVALID. It should be simplified (e.g. "0").
+    3. **Unsolved Functions**: Does the result contain function calls like 'integrate(...)', 'diff(...)', 'defint(...)'? This is INVALID.
+    4. **Error Messages**: Does it look like an error (e.g. "Stop", "nil", "undefined")? This is INVALID.
     
     Return JSON:
     { 
@@ -550,8 +567,6 @@ export const validateMathResult = async (query: string, result: string): Promise
     return JSON.parse(jsonText);
   } catch (error) {
     console.error("Validation API error", error);
-    // If API fails, default to valid to avoid blocking user, or invalid to be safe. 
-    // Assuming valid to be less disruptive if the engine produced something.
     return { isValid: true, reason: "Validation service unavailable, assuming valid." };
   }
 };
