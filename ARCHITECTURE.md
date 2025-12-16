@@ -16,28 +16,28 @@ Calcly operates as a Single Page Application (SPA) served by a lightweight Node.
 
 ```mermaid
 graph TD
-    User[User Input (Text/Voice/Image)] --> Frontend[React SPA]
-    Frontend --> Router[Request Router]
+    User["User Input (Text/Voice/Image)"] --> Frontend["React SPA"]
+    Frontend --> Router["Request Router"]
     
     subgraph "Compute Layer"
-        Router -->|General Knowledge| AI_Service[Gemini Service]
-        Router -->|Symbolic Math| Symbolic_Engine[Symbolic Pipeline]
-        Router -->|Numerical Math| Numerical_Engine[Numerical Pipeline]
+        Router -->|General Knowledge| AI_Service["Gemini Service"]
+        Router -->|Symbolic Math| Symbolic_Engine["Symbolic Pipeline"]
+        Router -->|Numerical Math| Numerical_Engine["Numerical Pipeline"]
     end
     
     subgraph "Local Engines (Client-Side)"
-        Symbolic_Engine --> Nerdamer[Nerdamer.js]
-        Symbolic_Engine --> Algebrite[Algebrite.js]
-        Numerical_Engine --> MathJS[Math.js]
+        Symbolic_Engine --> Nerdamer["Nerdamer.js"]
+        Symbolic_Engine --> Algebrite["Algebrite.js"]
+        Numerical_Engine --> MathJS["Math.js"]
     end
     
     subgraph "Cloud Intelligence"
-        AI_Service -->|JSON Schema| GeminiAPI[Google Gemini API]
-        Symbolic_Engine -->|Parsing & Fallback| GeminiAPI
-        Numerical_Engine -->|Parsing & Validation| GeminiAPI
+        AI_Service -->|JSON Schema| GeminiAPI["Google Gemini API"]
+        Symbolic_Engine -->|"Parsing & Fallback"| GeminiAPI
+        Numerical_Engine -->|"Parsing & Validation"| GeminiAPI
     end
     
-    GeminiAPI -->|Structured JSON| Frontend
+    GeminiAPI -->|"Structured JSON"| Frontend
     Nerdamer -->|LaTeX| Frontend
     MathJS -->|Result| Frontend
 ```
