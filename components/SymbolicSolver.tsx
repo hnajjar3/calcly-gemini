@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle, Calculator, Zap, Terminal, CheckCircle2, Sparkles, ExternalLink } from '../components/icons';
 import { parseMathCommand, MathCommand, solveMathWithAI, validateMathResult } from '../services/geminiService';
@@ -122,7 +123,8 @@ const constructLHSLatex = (cmd: MathCommand): string => {
 
   switch (cmd.operation) {
       case 'limit':
-          return `\\lim_{{${cmd.variable} \\to ${valToTex(cmd.end)}}} ${displayExpr}`;
+          // Corrected LaTeX: removed double braces around variable
+          return `\\lim_{${cmd.variable} \\to ${valToTex(cmd.end)}} ${displayExpr}`;
       case 'integrate':
           if (cmd.start && cmd.end) {
                return `\\int_{${valToTex(cmd.start)}}^{${valToTex(cmd.end)}} ${displayExpr} \\, d${cmd.variable}`;
@@ -158,6 +160,33 @@ const toAlgebriteVal = (val?: string) => {
   // Algebrite often handles 'pi' and 'e' naturally, but lower case is safer for pi
   if (v === 'pi') return 'pi'; 
   return val;
+};
+
+// Helper to detect if the engine just echoed the command (didn't solve)
+const isUnresolved = (output: string, operation: string): boolean => {
+  if (!output) return true;
+  const out = output.replace(/\s/g, '').toLowerCase();
+  const op = operation.toLowerCase();
+
+  // Keyword mapping of signatures that indicate "I just printed what you gave me"
+  const keywords: Record<string, string[]> = {
+    'integrate': ['int(', 'integrate(', 'defint('],
+    'sum': ['sum('],
+    'limit': ['limit('],
+    'differentiate': ['diff(', 'd(', 'derivative('],
+    'solve': ['solve(', 'roots('], // roots( is Algebrite
+    'determinant': ['det(', 'determinant('],
+    'invert': ['inv(', 'invert(']
+  };
+
+  const checks = keywords[op];
+  if (checks) {
+    for (const check of checks) {
+      if (out.includes(check)) return true;
+    }
+  }
+  
+  return false;
 };
 
 interface Props {
@@ -254,7 +283,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
 
       // --- EXECUTION STRATEGIES ---
 
-      const runNerdamer = (): string | null => {
+      const runNerdamer = (): { latex: string; decimal?: string } | null => {
         const NerdamerEngine = getNerdamer();
         if (!NerdamerEngine) {
             addLog("Nerdamer library not loaded.");
@@ -326,17 +355,23 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                  return null;
             }
 
+            // Echo Detection: Did it solve it?
+            if (isUnresolved(resultString, operation)) {
+                addLog(`Nerdamer returned unresolved expression (Echoed): ${resultString}`);
+                return null;
+            }
+
             // Formatting
             let latexOut = '';
             let decimalText = '';
-            try { decimalText = resultObj.evaluate().text('decimals'); } catch(e) {}
+            try { 
+                // Force decimal evaluation for potential use
+                decimalText = resultObj.evaluate().text('decimals'); 
+            } catch(e) {}
             
-            let useDecimal = false;
-            if (operation === 'evaluate') {
-                useDecimal = true;
-            }
+            let useDecimalAsPrimary = (operation === 'evaluate');
             
-            if (useDecimal && decimalText) {
+            if (useDecimalAsPrimary && decimalText) {
                 latexOut = formatDecimalLatex(decimalText);
             } else {
                  if (resultString.startsWith('[') && resultString.includes('.')) {
@@ -345,7 +380,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                      latexOut = resultObj.toTeX();
                 }
             }
-            return latexOut;
+            return { latex: latexOut, decimal: decimalText };
 
         } catch (nerdError: any) {
             addLog(`Nerdamer exception: ${nerdError.message}`);
@@ -353,7 +388,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
         }
       };
 
-      const runAlgebrite = (): string | null => {
+      const runAlgebrite = (): { latex: string; decimal?: string } | null => {
          const AlgebriteEngine = getAlgebrite();
          if (!AlgebriteEngine) {
              addLog("Algebrite library not loaded.");
@@ -406,21 +441,34 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                   return null;
               }
 
+              // Echo Detection
+              if (isUnresolved(res, operation)) {
+                addLog(`Algebrite returned unresolved expression (Echoed): ${res}`);
+                return null;
+              }
+
               // Formatting logic
               let decimalRes = '';
-              try { decimalRes = AlgebriteEngine.run(`float(${res})`); } catch(e) {}
+              try { 
+                  const d = AlgebriteEngine.run(`float(${res})`); 
+                  if (!d.includes("Stop")) decimalRes = d;
+              } catch(e) {}
               
-              if (decimalRes && !decimalRes.includes("Stop") && (decimalRes.startsWith('[') || /^-?\d*\.?\d+(e[-+]?\d+)?$/.test(decimalRes))) {
-                  return formatDecimalLatex(decimalRes);
+              let latexOut = '';
+              if (decimalRes && (operation === 'evaluate' || (decimalRes.startsWith('[') || /^-?\d*\.?\d+(e[-+]?\d+)?$/.test(decimalRes)) && !res.includes('...'))) {
+                  latexOut = formatDecimalLatex(decimalRes);
+              } else if (/^\[\s*\[/.test(res)) {
+                  latexOut = formatMatrixToLatex(res);
+              } else {
+                  const NerdamerEngine = getNerdamer();
+                  if (NerdamerEngine) {
+                     try { latexOut = NerdamerEngine(res).toTeX(); } catch(nErr) { latexOut = res.replace(/\*/g, ''); }
+                  } else {
+                     latexOut = res.replace(/\*/g, '');
+                  }
               }
-              
-              if (/^\[\s*\[/.test(res)) return formatMatrixToLatex(res);
-              
-              const NerdamerEngine = getNerdamer();
-              if (NerdamerEngine) {
-                 try { return NerdamerEngine(res).toTeX(); } catch(nErr) { return res.replace(/\*/g, ''); }
-              }
-              return res.replace(/\*/g, '');
+
+              return { latex: latexOut, decimal: decimalRes };
 
             } catch (algError: any) {
               addLog(`Algebrite exception: ${algError.message}`);
@@ -430,7 +478,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
 
       // 2. PIPELINE EXECUTION LOOP
       const isSupportedLocally = LOCAL_SUPPORTED_OPS.includes(operation);
-      const pipeline: Array<{ name: string; run: () => string | null }> = [];
+      const pipeline: Array<{ name: string; run: () => { latex: string; decimal?: string } | null }> = [];
 
       if (isSupportedLocally) {
           if (command.preferredEngine === 'algebrite') {
@@ -447,15 +495,41 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
       // 3. EXECUTE PIPELINE WITH AI VALIDATION
       for (const step of pipeline) {
           addLog(`Attempting Engine: ${step.name}`);
-          const result = step.run();
+          const output = step.run();
           
-          if (result) {
+          if (output) {
+              const { latex, decimal } = output;
               // --- AI CLOSED LOOP VERIFICATION ---
               addLog(`Verifying ${step.name} result with AI Judge...`);
-              const verification = await validateMathResult(input, result);
+              const verification = await validateMathResult(input, latex);
               
               if (verification.isValid) {
-                  finalLatex = result;
+                  finalLatex = latex;
+                  
+                  // UGLY FRACTION CHECK
+                  // If the latex result contains very long integers (10+ digits), swap to decimal if available
+                  // This prevents showing 11258999... / 11258999...
+                  if (decimal && /\d{10,}/.test(latex) && !latex.includes('.')) {
+                       let niceDecimal = decimal;
+                       try {
+                           const f = parseFloat(decimal);
+                           if (!isNaN(f)) {
+                               // Use scientific notation for very large/small numbers
+                               if (Math.abs(f) > 1e9 || (Math.abs(f) < 1e-4 && Math.abs(f) > 0)) {
+                                   const exp = f.toExponential(4);
+                                   const [b, e] = exp.split('e');
+                                   niceDecimal = `${b} \\times 10^{${parseInt(e)}}`;
+                               } else {
+                                   // Otherwise 6 decimal places is plenty for presentation
+                                   niceDecimal = parseFloat(f.toFixed(6)).toString();
+                               }
+                           }
+                       } catch(e) {}
+                       finalLatex = niceDecimal;
+                  }
+
+                  if (decimal) setDecimalResult(decimal);
+
                   engineName = step.name;
                   solved = true;
                   addLog(`✅ AI Judge Verified. Reason: ${verification.reason || 'Valid'}`);

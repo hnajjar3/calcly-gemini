@@ -157,7 +157,7 @@ const schemaDefinition = `
       "type": "OBJECT",
       "description": "Structured data for Chart.js",
       "properties": {
-        "type": { "type": "STRING", "enum": ["line", "bar", "pie", "doughnut", "radar", "scatter"] },
+        "type": { "type": "STRING", "enum": ["line", "bar", "area", "pie", "doughnut", "radar", "scatter"] },
         "title": { "type": "STRING" },
         "labels": { 
           "type": "ARRAY", 
@@ -235,6 +235,13 @@ const attemptGenerate = async (
       2.  **Tables**: For data comparisons, nutritional info, or specs, USE type 'table' in 'sections' and populate 'tableData'.
       3.  **Visualization (Charts)**:
           - If the query implies comparison, statistics, trends, or distribution, YOU MUST generate a 'chart' object.
+          - **Chart Type Selection Logic**:
+            - **'radar'**: MUST use for multi-attribute comparison of 2+ entities (e.g. "iPhone vs Pixel" specs, "REST vs GraphQL features").
+            - **'area'**: MUST use for integrals, cumulative sums, or "area under curve" contexts.
+            - **'line'**: Use for trends over time.
+            - **'bar'**: Use for categorical comparisons (counts, amounts).
+            - **'scatter'**: Use for correlations (X vs Y).
+            - **'pie'/'doughnut'**: Use for proportions/percentages.
           - **Format**: Return a JSON structure compatible with Chart.js:
             - 'labels': An array of strings for the X-axis (e.g. ["Protein", "Fat", "Carbs"]).
             - 'datasets': An array of objects, each with a 'label' (series name) and 'data' (array of numbers).
@@ -593,11 +600,11 @@ export const explainMathResult = async (query: string, result: string, engine: s
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash', // Use gemini-2.5-flash which is a valid model ID
+      model: 'gemini-2.5-pro', // Updated to 2.5 Pro for better reasoning
       contents: { parts: [{ text: "Explain the steps." }] },
       config: {
         systemInstruction: systemInstruction,
-        thinkingConfig: { thinkingBudget: 16384 }, // Increase thinking budget for "Pro" like behavior
+        thinkingConfig: { thinkingBudget: 2048 }, 
       }
     });
 
@@ -624,11 +631,11 @@ export const solveMathWithAI = async (query: string): Promise<string> => {
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash', // Use gemini-2.5-flash which is a valid model ID
+      model: 'gemini-2.5-pro', // Updated to 2.5 Pro for better handling of complex math fallbacks
       contents: { parts: [{ text: query }] },
       config: {
         systemInstruction: systemInstruction,
-        thinkingConfig: { thinkingBudget: 16384 }, // Increase thinking budget for "Pro" like behavior
+        thinkingConfig: { thinkingBudget: 2048 }, 
       }
     });
 

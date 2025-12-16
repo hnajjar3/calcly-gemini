@@ -42,6 +42,9 @@ export const ChartVisualization: React.FC<Props> = ({ config, isDarkMode }) => {
       },
       r: { // For Radar charts
         grid: { color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' },
+        angleLines: {
+            color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)'
+        },
         pointLabels: { 
             color: isDarkMode ? '#e2e8f0' : '#1e293b', 
             font: { size: 11 } 
