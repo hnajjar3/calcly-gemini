@@ -430,10 +430,16 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
       "preferredEngine": "nerdamer" | "algebrite" (optional)
     }
 
-    OPERATION RULES:
-    1. If the request is a standard operation, use one of: 'integrate', 'differentiate', 'solve', 'simplify', 'factor', 'limit', 'sum', 'evaluate', 'determinant', 'invert', 'taylor'.
-    2. If the request is a specific named operation (e.g., "Fourier Transform", "Laplace Transform", "Eigenvalues"), use that specific name (e.g., "fourierTransform").
-    3. Do NOT use "evaluate" as a catch-all for complex transforms.
+    CRITICAL RULES:
+    1. **Expression Extraction**: Extract ONLY the mathematical part of the query for the 'expression' field.
+       - Query: "Differentiate x^2" -> operation: "differentiate", expression: "x^2" (NOT "Differentiate x^2")
+       - Query: "integrate sin(x) from 0 to 1" -> operation: "integrate", expression: "sin(x)", start: "0", end: "1"
+       - Query: "derive tan(x)" -> operation: "differentiate", expression: "tan(x)"
+    2. **Synonyms**: Map natural language to standard operations:
+       - "derive", "derivative", "slope" -> "differentiate"
+       - "antiderivative", "area under curve" -> "integrate"
+       - "roots", "zeros" -> "solve"
+    3. If the request is a specific named operation (e.g., "Fourier Transform"), use that specific name (e.g., "fourierTransform").
   `;
 
   try {
@@ -470,7 +476,7 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
       return { operation: 'evaluate', expression: query, preferredEngine: 'nerdamer' };
     }
   } catch (error) {
-    // If parsing fails due to API error, fall back to simple evaluation
+    // If parsing fails due to API error, fall back to local eval
     console.warn("Parse API failed, falling back to local eval:", error);
     return { operation: 'evaluate', expression: query, preferredEngine: 'nerdamer' };
   }
@@ -509,6 +515,47 @@ export const parseNumericalExpression = async (query: string): Promise<string> =
   }
 };
 
+export const validateMathResult = async (query: string, result: string): Promise<{ isValid: boolean; reason?: string }> => {
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+
+  const systemInstruction = `
+    You are a Strict Math Validator.
+    Your task is to verify if the 'Computed Result' is a valid, solved mathematical answer to the 'User Query'.
+    
+    Check for:
+    1. **Echoing**: Is the result just the input query repeated (e.g. "integrate x" -> "integrate(x)")? This is INVALID.
+    2. **Unsolved Functions**: Does the result contain function calls like 'integrate(...)', 'diff(...)', 'defint(...)'? This is INVALID.
+    3. **Error Messages**: Does it look like an error (e.g. "Stop", "nil", "undefined")? This is INVALID.
+    4. **Simplification**: If the query was 'simplify', echoing is allowed only if the expression is already simple.
+    
+    Return JSON:
+    { 
+      "isValid": boolean, 
+      "reason": "short explanation of why it is valid or invalid" 
+    }
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: { parts: [{ text: `User Query: "${query}"\nComputed Result: "${result}"` }] },
+      config: {
+        systemInstruction: systemInstruction,
+        thinkingConfig: { thinkingBudget: 0 },
+        responseMimeType: 'application/json'
+      }
+    });
+
+    const jsonText = extractJSON(response.text || '', 'isValid');
+    return JSON.parse(jsonText);
+  } catch (error) {
+    console.error("Validation API error", error);
+    // If API fails, default to valid to avoid blocking user, or invalid to be safe. 
+    // Assuming valid to be less disruptive if the engine produced something.
+    return { isValid: true, reason: "Validation service unavailable, assuming valid." };
+  }
+};
+
 export const explainMathResult = async (query: string, result: string, engine: string): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
@@ -530,11 +577,11 @@ export const explainMathResult = async (query: string, result: string, engine: s
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview', // UPGRADE TO PRO
+      model: 'gemini-2.5-flash', // Use gemini-2.5-flash which is a valid model ID
       contents: { parts: [{ text: "Explain the steps." }] },
       config: {
         systemInstruction: systemInstruction,
-        thinkingConfig: { thinkingBudget: 2048 }, 
+        thinkingConfig: { thinkingBudget: 16384 }, // Increase thinking budget for "Pro" like behavior
       }
     });
 
@@ -561,11 +608,11 @@ export const solveMathWithAI = async (query: string): Promise<string> => {
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview', // UPGRADE TO PRO
+      model: 'gemini-2.5-flash', // Use gemini-2.5-flash which is a valid model ID
       contents: { parts: [{ text: query }] },
       config: {
         systemInstruction: systemInstruction,
-        thinkingConfig: { thinkingBudget: 2048 },
+        thinkingConfig: { thinkingBudget: 16384 }, // Increase thinking budget for "Pro" like behavior
       }
     });
 

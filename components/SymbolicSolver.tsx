@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle, Calculator, Zap, Terminal, CheckCircle2, Sparkles } from '../components/icons';
-import { parseMathCommand, MathCommand, explainMathResult, solveMathWithAI } from '../services/geminiService';
+import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle, Calculator, Zap, Terminal, CheckCircle2, Sparkles, ExternalLink } from '../components/icons';
+import { parseMathCommand, MathCommand, solveMathWithAI, validateMathResult } from '../services/geminiService';
 import { LatexRenderer } from './LatexRenderer';
 
 declare const nerdamer: any;
@@ -121,10 +121,6 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
   const [debugLog, setDebugLog] = useState<string[]>([]);
   const [showDebug, setShowDebug] = useState(false);
   
-  // Explanation State
-  const [explanation, setExplanation] = useState<string | null>(null);
-  const [isExplaining, setIsExplaining] = useState(false);
-
   useEffect(() => {
     if (!isOpen) return;
 
@@ -148,6 +144,30 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
     setDebugLog(prev => [...prev, msg]);
   };
 
+  /**
+   * LOCAL SANITY CHECK
+   * Extremely basic check to see if the engine crashed or returned explicit error strings.
+   * Semantic verification is now done by AI.
+   */
+  const quickSanityCheck = (result: string): { isValid: boolean; reason?: string } => {
+    if (!result) return { isValid: false, reason: "Empty result" };
+    
+    // Check for specific hard Error Strings from libraries
+    const errorKeywords = ["Stop", "nil", "cannot solve", "Division by zero", "Invalid argument", "parse error"];
+    for (const err of errorKeywords) {
+        if (result.includes(err)) {
+            return { isValid: false, reason: `Engine returned error: '${err}'` };
+        }
+    }
+
+    // Heuristic: Is the result 'undefined' or 'null' string?
+    if (result === 'undefined' || result === 'null') {
+        return { isValid: false, reason: "Result is undefined/null" };
+    }
+
+    return { isValid: true };
+  };
+
   const handleSolve = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!input.trim() || isProcessing) return;
@@ -159,36 +179,37 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
     setDecimalResult(null);
     setUsedEngine(null);
     setDebugLog([]);
-    setExplanation(null);
-    setIsExplaining(false);
 
     const nCheck = !!getNerdamer();
     const aCheck = !!getAlgebrite();
     setLibraryStatus({ nerdamer: nCheck, algebrite: aCheck });
 
     try {
+      // 1. PARSE PHASE
       addLog("Parsing natural language with Gemini...");
       const command = await parseMathCommand(input);
       setParsedCommand(command);
       addLog(`Parsed Command: ${JSON.stringify(command)}`);
 
       const { operation, expression, variable = 'x', start, end } = command;
-      let solved = false;
       let finalLatex = '';
-      
-      // --- NERDAMER EXECUTION BLOCK ---
-      const runNerdamer = () => {
+      let engineName = '';
+      let solved = false;
+
+      // --- EXECUTION STRATEGIES ---
+
+      const runNerdamer = (): string | null => {
         const NerdamerEngine = getNerdamer();
         if (!NerdamerEngine) {
-            addLog("Nerdamer library not found. Skipping.");
-            return false;
+            addLog("Nerdamer library not loaded.");
+            return null;
         }
         
         try {
             if (NerdamerEngine.flush) NerdamerEngine.flush();
 
             let nerdString = '';
-            // Only strictly supported ops are passed here
+            // Construct Nerdamer specific syntax
             switch (operation) {
               case 'integrate':
                 if (start !== undefined && end !== undefined) {
@@ -201,10 +222,11 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                 nerdString = `diff(${expression}, ${variable})`;
                 break;
               case 'solve':
-                if (expression.includes(',')) {
-                   nerdString = `solveEquations([${expression}])`;
+                if (expression.includes(',') || expression.includes('=')) {
+                    const eqParam = (expression.startsWith('[') || !expression.includes(',')) ? expression : `[${expression}]`;
+                    nerdString = `solveEquations(${eqParam})`;
                 } else {
-                   nerdString = `solve(${expression}, ${variable})`;
+                    nerdString = `solve(${expression}, ${variable})`;
                 }
                 break;
               case 'sum':
@@ -234,100 +256,59 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
 
             addLog(`Nerdamer execution: ${nerdString}`);
             const obj = NerdamerEngine(nerdString);
-            const evaluated = obj.evaluate();
             
-            const resultString = evaluated.text();
-            addLog(`Nerdamer text output: ${resultString}`);
+            // Fix for exp(t): Only evaluate if explicit 'evaluate' op, otherwise keep symbolic 
+            const resultObj = (operation === 'evaluate') ? obj.evaluate() : obj;
+            const resultString = resultObj.text();
+            addLog(`Nerdamer raw output: ${resultString}`);
 
-            // Failure detection
-            const failKeywords = ['integrate', 'defint', 'sum', 'limit', 'determinant', 'invert', 'taylor'];
-            const isFailure = (operation !== 'evaluate') && failKeywords.some(kw => resultString.includes(kw) && resultString.includes('('));
-            if (isFailure) {
-                addLog(`Nerdamer returned input (unsolved): ${resultString}`);
-                return false;
-            }
-            
-            // Heuristic: If operation is evaluate but result is identical to input (ignoring spaces), treat as failure
-            const cleanResult = resultString.replace(/\s/g, '');
-            const cleanInput = expression.replace(/\s/g, '');
-            if (operation === 'evaluate' && cleanResult === cleanInput && cleanInput.length > 5 && !/^\d+$/.test(cleanInput)) {
-                addLog(`Nerdamer returned input for evaluation (unsolved): ${resultString}`);
-                return false;
+            // Quick Local Sanity Check
+            const sanity = quickSanityCheck(resultString);
+            if (!sanity.isValid) {
+                 addLog(`Nerdamer sanity check failed: ${sanity.reason}`);
+                 return null;
             }
 
-            // ATTEMPT DECIMAL PRIORITY
+            // Formatting
+            let latexOut = '';
             let decimalText = '';
-            try {
-               decimalText = evaluated.text('decimals');
-            } catch(e) {}
-
-            // Check if we should use decimal text
-            // 1. If resultString is fraction/irrational but decimalText is valid scalar
-            // 2. If resultString is a list and we want decimals for roots
-            let useDecimalText = false;
-            if (decimalText && decimalText !== resultString) {
-                // If it's a list [a, b], check if decimalText is also a list
-                if (resultString.startsWith('[') && decimalText.startsWith('[')) {
-                    useDecimalText = true;
-                } 
-                // If scalar decimal
-                else if (/^-?\d*\.?\d+$/.test(decimalText)) {
-                    useDecimalText = true;
-                }
-                // If complex scalar
-                else if (decimalText.includes('i') && decimalText.includes('.')) {
-                    useDecimalText = true;
-                }
+            try { decimalText = resultObj.evaluate().text('decimals'); } catch(e) {}
+            
+            let useDecimal = false;
+            if (operation === 'evaluate') {
+                useDecimal = true;
             }
-
-            if (useDecimalText) {
-                addLog(`Using decimal text: ${decimalText}`);
-                finalLatex = formatDecimalLatex(decimalText);
+            
+            if (useDecimal && decimalText) {
+                latexOut = formatDecimalLatex(decimalText);
             } else {
-                // Check if resultString itself is simple enough to format directly
-                // e.g. [0.5+0.866i, ...]
-                if (resultString.startsWith('[') && resultString.includes('.')) {
-                    finalLatex = formatDecimalLatex(resultString);
-                } else if (/^-?\d+\/\d+$/.test(resultString)) {
-                     // Simple fraction -> Decimal
-                     const [n, d] = resultString.split('/').map(Number);
-                     if (d !== 0) finalLatex = parseFloat((n / d).toFixed(4)).toString();
-                     else finalLatex = evaluated.toTeX();
+                 if (resultString.startsWith('[') && resultString.includes('.')) {
+                    latexOut = formatDecimalLatex(resultString);
                 } else {
-                     // Fallback to standard symbolic TeX
-                     finalLatex = evaluated.toTeX();
+                     latexOut = resultObj.toTeX();
                 }
             }
-
-            setUsedEngine('Nerdamer');
-            setDecimalResult(null); 
-            return true;
+            return latexOut;
 
         } catch (nerdError: any) {
-            addLog(`Nerdamer failed: ${nerdError.message}`);
-            return false;
+            addLog(`Nerdamer exception: ${nerdError.message}`);
+            return null;
         }
       };
 
-      // --- ALGEBRITE EXECUTION BLOCK ---
-      const runAlgebrite = () => {
+      const runAlgebrite = (): string | null => {
          const AlgebriteEngine = getAlgebrite();
          if (!AlgebriteEngine) {
-             addLog("Algebrite library not loaded or failed to load. Skipping.");
-             return false;
+             addLog("Algebrite library not loaded.");
+             return null;
          }
          
          try {
               let algString = '';
-              // Only strictly supported ops are passed here
               switch (operation) {
                 case 'integrate':
-                  if (start !== undefined && end !== undefined) {
-                    algString = `defint(${expression},${variable},${start},${end})`;
-                  } else {
-                    if (variable === 'x') algString = `integral(${expression})`;
-                    else algString = `integral(${expression},${variable})`;
-                  }
+                  if (start !== undefined && end !== undefined) algString = `defint(${expression},${variable},${start},${end})`;
+                  else algString = variable === 'x' ? `integral(${expression})` : `integral(${expression},${variable})`;
                   break;
                 case 'differentiate':
                   algString = `d(${expression},${variable})`;
@@ -336,156 +317,143 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                    if (expression.includes(',')) algString = `roots(${expression})`; 
                    else algString = `roots(${expression},${variable})`;
                    break;
-                case 'sum':
-                   algString = `sum(${expression},${variable},${start},${end})`;
-                   break;
-                case 'factor':
-                   algString = `factor(${expression})`;
-                   break;
-                case 'simplify':
-                   algString = `simplify(${expression})`;
-                   break;
-                case 'determinant':
-                   algString = `det(${formatMatrixForAlgebrite(expression)})`;
-                   break;
-                case 'invert':
-                   algString = `inv(${formatMatrixForAlgebrite(expression)})`;
-                   break;
-                case 'taylor':
-                   algString = `taylor(${expression},${variable},${start || '0'},${end || '4'})`;
-                   break;
-                default:
-                   algString = expression;
+                case 'sum': algString = `sum(${expression},${variable},${start},${end})`; break;
+                case 'factor': algString = `factor(${expression})`; break;
+                case 'simplify': algString = `simplify(${expression})`; break;
+                case 'determinant': algString = `det(${formatMatrixForAlgebrite(expression)})`; break;
+                case 'invert': algString = `inv(${formatMatrixForAlgebrite(expression)})`; break;
+                case 'taylor': algString = `taylor(${expression},${variable},${start || '0'},${end || '4'})`; break;
+                default: algString = expression;
               }
 
               addLog(`Algebrite execution: ${algString}`);
               const res = AlgebriteEngine.run(algString);
-              addLog(`Algebrite output: ${res}`);
+              addLog(`Algebrite raw output: ${res}`);
               
-              if (!res || res.startsWith("Stop") || res.includes("Stop") || res === 'nil') {
-                 addLog(`Algebrite returned error: ${res}`);
-                 return false;
+              const sanity = quickSanityCheck(res);
+              if (!sanity.isValid) {
+                  addLog(`Algebrite sanity check failed: ${sanity.reason}`);
+                  return null;
               }
 
-              // TRY DECIMAL RESOLUTION
+              // Formatting logic
               let decimalRes = '';
-              try {
-                  decimalRes = AlgebriteEngine.run(`float(${res})`);
-              } catch(e) {}
-
-              if (decimalRes && !decimalRes.includes("Stop")) {
-                  // If result is list or scalar, prefer decimalRes
-                  if (decimalRes.startsWith('[') || /^-?\d*\.?\d+(e[-+]?\d+)?$/.test(decimalRes)) {
-                      addLog(`Using Algebrite decimal: ${decimalRes}`);
-                      finalLatex = formatDecimalLatex(decimalRes);
-                  } else {
-                      // Fallback for matrix or complex structure
-                      if (/^\[\s*\[/.test(res)) {
-                           finalLatex = formatMatrixToLatex(res);
-                      } else {
-                           const NerdamerEngine = getNerdamer();
-                           if (NerdamerEngine) {
-                              try { finalLatex = NerdamerEngine(res).toTeX(); } 
-                              catch(nErr) { finalLatex = res.replace(/\*/g, ''); }
-                           } else {
-                              finalLatex = res.replace(/\*/g, '');
-                           }
-                      }
-                  }
-              } else {
-                  // Normal fallback
-                   if (/^\[\s*\[/.test(res)) {
-                       finalLatex = formatMatrixToLatex(res);
-                  } else {
-                       const NerdamerEngine = getNerdamer();
-                       if (NerdamerEngine) {
-                          try { finalLatex = NerdamerEngine(res).toTeX(); } 
-                          catch(nErr) { finalLatex = res.replace(/\*/g, ''); }
-                       } else {
-                          finalLatex = res.replace(/\*/g, '');
-                       }
-                  }
+              try { decimalRes = AlgebriteEngine.run(`float(${res})`); } catch(e) {}
+              
+              if (decimalRes && !decimalRes.includes("Stop") && (decimalRes.startsWith('[') || /^-?\d*\.?\d+(e[-+]?\d+)?$/.test(decimalRes))) {
+                  return formatDecimalLatex(decimalRes);
               }
-
-              setUsedEngine('Algebrite');
-              setDecimalResult(null); 
-              return true;
+              
+              if (/^\[\s*\[/.test(res)) return formatMatrixToLatex(res);
+              
+              const NerdamerEngine = getNerdamer();
+              if (NerdamerEngine) {
+                 try { return NerdamerEngine(res).toTeX(); } catch(nErr) { return res.replace(/\*/g, ''); }
+              }
+              return res.replace(/\*/g, '');
 
             } catch (algError: any) {
-              addLog(`Algebrite failed: ${algError.message}`);
-              return false;
+              addLog(`Algebrite exception: ${algError.message}`);
+              return null;
             }
       };
 
-      // --- DYNAMIC EXECUTION FLOW ---
-      
-      // Check if operation is supported by local engines
+      // 2. PIPELINE EXECUTION LOOP
       const isSupportedLocally = LOCAL_SUPPORTED_OPS.includes(operation);
+      const pipeline: Array<{ name: string; run: () => string | null }> = [];
 
       if (isSupportedLocally) {
           if (command.preferredEngine === 'algebrite') {
-             addLog("Gemini prefers Algebrite for this query.");
-             solved = runAlgebrite();
-             if (!solved) {
-                 addLog("Algebrite failed, trying Nerdamer...");
-                 solved = runNerdamer();
-             }
+              pipeline.push({ name: 'Algebrite', run: runAlgebrite });
+              pipeline.push({ name: 'Nerdamer', run: runNerdamer });
           } else {
-             solved = runNerdamer();
-             if (!solved) {
-                 addLog("Nerdamer failed, trying Algebrite...");
-                 solved = runAlgebrite();
-             }
+              pipeline.push({ name: 'Nerdamer', run: runNerdamer });
+              pipeline.push({ name: 'Algebrite', run: runAlgebrite });
           }
       } else {
-          addLog(`Operation '${operation}' is not supported by local engines.`);
+          addLog(`Operation '${operation}' not supported locally. Skipping to AI.`);
       }
 
-      // AI FALLBACK: If local engines fail or operation is unsupported, ask Gemini
+      // 3. EXECUTE PIPELINE WITH AI VALIDATION
+      for (const step of pipeline) {
+          addLog(`Attempting Engine: ${step.name}`);
+          const result = step.run();
+          
+          if (result) {
+              // --- AI CLOSED LOOP VERIFICATION ---
+              addLog(`Verifying ${step.name} result with AI Judge...`);
+              const verification = await validateMathResult(input, result);
+              
+              if (verification.isValid) {
+                  finalLatex = result;
+                  engineName = step.name;
+                  solved = true;
+                  addLog(`✅ AI Judge Verified. Reason: ${verification.reason || 'Valid'}`);
+                  break; 
+              } else {
+                  addLog(`❌ AI Judge Rejected. Reason: ${verification.reason}`);
+                  // Proceed to next engine
+              }
+          }
+      }
+
+      // 4. FALLBACK TO AI (The "Last Resort")
       if (!solved) {
-         addLog("Local engines failed or operation unsupported. Attempting AI Fallback...");
+         addLog("⚠️ Local engines failed validation or support. Initiating AI Fallback...");
          try {
+             // We pass the raw input to let AI re-interpret if our parsing was wrong
              const aiResult = await solveMathWithAI(input);
-             if (aiResult && aiResult.length > 0 && !aiResult.toLowerCase().includes("no solution")) {
+             
+             if (aiResult && aiResult.length > 0) {
+                 if (aiResult.toLowerCase().includes("no solution") || aiResult.includes("I cannot")) {
+                     throw new Error("AI could not solve the problem.");
+                 }
+
                  finalLatex = aiResult;
                  setUsedEngine('Gemini Pro (AI)');
-                 addLog(`AI Fallback result: ${aiResult}`);
+                 addLog(`✅ Solved by AI Fallback. Result: ${aiResult.substring(0, 50)}...`);
                  solved = true;
+             } else {
+                 throw new Error("Empty response from AI.");
              }
-         } catch (aiErr) {
-             addLog("AI Fallback failed to retrieve response.");
+         } catch (aiErr: any) {
+             addLog(`❌ AI Fallback failed: ${aiErr.message}`);
+             setError("Could not solve this problem. Please check the syntax or try rephrasing.");
          }
+      } else {
+          setUsedEngine(engineName);
       }
 
+      // 5. FINALIZE
       if (solved) {
-        // Cleanup LaTeX
         finalLatex = finalLatex.replace(/\\text{([^}]*)}/g, '$1');
-        // If AI returns block math $$ already, don't double wrap
         const hasBlock = finalLatex.trim().startsWith('$$');
         setResultLatex(hasBlock ? finalLatex : `$$${finalLatex}$$`);
       } else {
-        throw new Error("Unable to solve symbolically with available engines.");
+        if (!error) setError("Unable to solve. The query might be ambiguous or unsupported.");
       }
 
     } catch (err: any) {
       addLog(`Fatal Error: ${err.message}`);
-      setError(err.message || "Could not parse or solve this expression.");
+      setError(err.message || "An unexpected error occurred.");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleExplain = async () => {
-    if (!resultLatex || isExplaining) return;
-    setIsExplaining(true);
-    try {
-        const expl = await explainMathResult(input, resultLatex, usedEngine || 'Symbolic Engine');
-        setExplanation(expl);
-    } catch(e) {
-        setError("Failed to generate explanation. Please try again.");
-    } finally {
-        setIsExplaining(false);
-    }
+  const handleExplain = () => {
+    if (!resultLatex) return;
+    
+    // Construct a query for the main AI app
+    const cleanResult = resultLatex.replace(/\$\$/g, '').trim();
+    const query = `Explain the step-by-step solution for: ${input}. The result is: ${cleanResult}`;
+    
+    const params = new URLSearchParams();
+    params.set('q', query);
+    params.set('mode', 'pro');
+    
+    // Direct navigation to root with params, ensuring no subpaths or UUIDs persist
+    window.location.href = `/?${params.toString()}`;
   };
 
   if (!isOpen) return null;
@@ -583,7 +551,11 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                     <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-slate-800 dark:to-slate-800/50 border border-indigo-100 dark:border-indigo-900/30 rounded-xl p-6 shadow-md relative group">
                          {usedEngine && (
                             <div className="absolute top-3 right-3 flex items-center px-2 py-1 rounded-md bg-white/50 dark:bg-black/20 border border-indigo-100 dark:border-indigo-900/20">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-500 mr-1.5" />
+                                {usedEngine.includes('AI') ? (
+                                    <Sparkles className="w-3 h-3 text-amber-500 mr-1.5" />
+                                ) : (
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-500 mr-1.5" />
+                                )}
                                 <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
                                    Solved by {usedEngine}
                                 </span>
@@ -606,39 +578,15 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
                         )}
                     </div>
                     
-                    {/* Explain Button */}
-                    {!explanation && (
-                        <button 
-                            onClick={handleExplain}
-                            disabled={isExplaining}
-                            className="w-full py-2 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 text-xs font-semibold rounded-lg flex items-center justify-center transition-colors shadow-sm"
-                        >
-                            {isExplaining ? (
-                                <>
-                                    <RefreshCw className="w-3 h-3 mr-2 animate-spin" />
-                                    Generating Explanation...
-                                </>
-                            ) : (
-                                <>
-                                    <Sparkles className="w-3 h-3 mr-2" />
-                                    Explain Steps
-                                </>
-                            )}
-                        </button>
-                    )}
-
-                    {/* Explanation Area */}
-                    {explanation && (
-                        <div className="mt-4 pt-4 border-t border-indigo-100 dark:border-indigo-900/30 animate-fade-in">
-                            <h5 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center">
-                                <Sparkles className="w-3 h-3 mr-1.5 text-amber-500" />
-                                Step-by-Step Derivation
-                            </h5>
-                            <div className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed markdown-content">
-                                <LatexRenderer content={explanation} renderMarkdown={true} />
-                            </div>
-                        </div>
-                    )}
+                    {/* Explain Button - Redirects to Main App */}
+                    <button 
+                        onClick={handleExplain}
+                        className="w-full py-2 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 text-xs font-semibold rounded-lg flex items-center justify-center transition-colors shadow-sm"
+                        title="Open comprehensive explanation in main window"
+                    >
+                        <ExternalLink className="w-3 h-3 mr-2" />
+                        Explain Solution in Detail
+                    </button>
 
                 </div>
             )}
