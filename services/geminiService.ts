@@ -510,18 +510,38 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
 export const parseNumericalExpression = async (query: string): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
+  // Enhanced prompt with examples for robust Math.js translation
   const systemInstruction = `
     You are a Math.js Translator. Your goal is to convert natural language queries into valid Math.js syntax.
+    
+    MATH.JS CAPABILITIES:
+    - Arithmetic: +, -, *, /, ^, %
+    - Statistics: mean, median, std, variance, sum, prod
+    - Matrix: det, inv, transpose, dot, cross
+    - Functions: sin, cos, tan, log, log10, sqrt, abs, exp, factorial, combinations, permutations
+    - Constants: pi, e, phi
+    
+    ADVANCED MAPPING (Custom Functions):
+    - The environment supports a custom 'integrate' and 'deriv' function for NUMERIC calculus.
+    - Integration: "integrate x^2 from 0 to 1" -> "integrate('x^2', 'x', 0, 1)" (Note: expression and variable MUST be strings)
+    - Derivative: "derivative of x^2 at x=2" -> "deriv('x^2', 'x', 2)" (Note: expression and variable MUST be strings)
+    
+    EXAMPLES:
+    - "average of 1, 2, 3" -> "mean(1, 2, 3)"
+    - "integral of x^2 from 0 to 5" -> "integrate('x^2', 'x', 0, 5)"
+    - "derivative of sin(x) at x=PI" -> "deriv('sin(x)', 'x', pi)"
+    - "solve x+1=0" -> "UNSUPPORTED_OPERATION" (Solvers still unsupported numerically in this specific context unless basic)
+    
     OUTPUT JSON SCHEMA: { "expression": "string" }
   `;
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.5-pro',
       contents: { parts: [{ text: query }] },
       config: {
         systemInstruction: systemInstruction,
-        thinkingConfig: { thinkingBudget: 0 },
+        thinkingConfig: { thinkingBudget: 2048 },
         responseMimeType: 'application/json'
       }
     });
@@ -537,6 +557,38 @@ export const parseNumericalExpression = async (query: string): Promise<string> =
   } catch (error) {
     console.warn("Numerical parsing API failed, falling back to raw input:", error);
     return query;
+  }
+};
+
+export const solveNumericalWithAI = async (query: string): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+  
+  const systemInstruction = `
+    You are a Numerical Compute Engine. 
+    Calculate the precise numerical result for the user's query.
+    
+    RULES:
+    1. Return ONLY the final number (or array of numbers).
+    2. Do NOT use LaTeX.
+    3. Do NOT provide explanations.
+    4. If the result is a scalar, return just the number (e.g. "4.52").
+    5. If the result is a list/vector, return standard array syntax (e.g. "[1, 2, 3]").
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-pro',
+      contents: { parts: [{ text: query }] },
+      config: {
+        systemInstruction: systemInstruction,
+        thinkingConfig: { thinkingBudget: 2048 }, 
+      }
+    });
+
+    return response.text?.trim() || "Error computing result";
+  } catch (error) {
+    console.error("AI Numerical Fallback error:", error);
+    return "Error";
   }
 };
 
