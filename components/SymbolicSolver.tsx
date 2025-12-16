@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle, Calculator, Zap, Terminal, CheckCircle2, Sparkles, ExternalLink } from '../components/icons';
 import { parseMathCommand, MathCommand, solveMathWithAI, validateMathResult } from '../services/geminiService';
@@ -102,6 +101,44 @@ const formatMatrixToLatex = (str: string): string => {
     } catch (e) {}
   }
   return str;
+};
+
+// Helper to construct LHS LaTeX (Question part)
+const constructLHSLatex = (cmd: MathCommand): string => {
+  let expr = cmd.expression;
+  
+  // Try to format matrix
+  const matrixParams = formatMatrixToLatex(expr);
+  const displayExpr = matrixParams; 
+
+  const valToTex = (v?: string) => {
+    if (!v) return '';
+    const l = v.toLowerCase();
+    if (l === 'inf' || l === 'infinity') return '\\infty';
+    if (l === '-inf' || l === '-infinity') return '-\\infty';
+    if (l === 'pi') return '\\pi';
+    return v;
+  };
+
+  switch (cmd.operation) {
+      case 'limit':
+          return `\\lim_{{${cmd.variable} \\to ${valToTex(cmd.end)}}} ${displayExpr}`;
+      case 'integrate':
+          if (cmd.start && cmd.end) {
+               return `\\int_{${valToTex(cmd.start)}}^{${valToTex(cmd.end)}} ${displayExpr} \\, d${cmd.variable}`;
+          }
+          return `\\int ${displayExpr} \\, d${cmd.variable}`;
+      case 'differentiate':
+          return `\\frac{d}{d${cmd.variable}} \\left( ${displayExpr} \\right)`;
+      case 'sum':
+          return `\\sum_{${cmd.variable}=${valToTex(cmd.start)}}^{${valToTex(cmd.end)}} ${displayExpr}`;
+      case 'determinant':
+          return `\\det ${displayExpr}`;
+      case 'invert':
+          return `\\left( ${displayExpr} \\right)^{-1}`;
+      default:
+           return displayExpr;
+  }
 };
 
 // Normalization Helpers for Infinity/Constants
@@ -460,8 +497,20 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, onClose }) => {
       // 5. FINALIZE
       if (solved) {
         finalLatex = finalLatex.replace(/\\text{([^}]*)}/g, '$1');
-        const hasBlock = finalLatex.trim().startsWith('$$');
-        setResultLatex(hasBlock ? finalLatex : `$$${finalLatex}$$`);
+        
+        // Remove existing delimiters from RHS to cleanly merge
+        let cleanRhs = finalLatex.trim();
+        if (cleanRhs.startsWith('$$')) cleanRhs = cleanRhs.slice(2, -2);
+        else if (cleanRhs.startsWith('$')) cleanRhs = cleanRhs.slice(1, -1);
+        
+        // Construct LHS (Question)
+        const lhs = constructLHSLatex(command);
+        
+        // Determine separator
+        const separator = command.operation === 'solve' ? '\\implies' : '=';
+        
+        // Final Equation
+        setResultLatex(`$$ ${lhs} ${separator} ${cleanRhs} $$`);
       } else {
         if (!error) setError("Unable to solve. The query might be ambiguous or unsupported.");
       }
