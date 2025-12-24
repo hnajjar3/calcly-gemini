@@ -172,6 +172,7 @@ const App: React.FC = () => {
             
             const modeParam = params.get('mode');
             if (modeParam === 'flash') setModelMode('flash');
+            if (modeParam === 'pro') setModelMode('pro');
             
             if (tool === 'symbolic') {
                 setInitialToolQuery(urlQuery || undefined);
@@ -185,6 +186,11 @@ const App: React.FC = () => {
                 } else {
                     setQuery(urlQuery);
                 }
+            }
+
+            // Clean up the URL after processing deep link parameters
+            if (urlQuery || tool || modeParam || auto) {
+               window.history.replaceState({}, '', window.location.pathname);
             }
         }
     } catch (e) {}

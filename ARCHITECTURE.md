@@ -141,15 +141,15 @@ Calcly supports powerful URL-based interactions, allowing external apps or sites
 ### 7.2 Use Case Examples
 
 #### General Knowledge / Structured Inquiry
-`https://calcly.app/?q=Compare+GDP+of+G7+countries&mode=pro&auto=true`
+`https://app.calcly.ai/?q=Compare+GDP+of+G7+countries&mode=pro&auto=true`
 *   **Result**: Opens the main solver, performs a multi-country comparison, and renders a Bar/Line chart automatically.
 
 #### Symbolic Math Deep-Link
-`https://calcly.app/?tool=symbolic&q=integrate+x^2+sin(x)&auto=true`
+`https://app.calcly.ai/?tool=symbolic&q=integrate+x^2+sin(x)&auto=true`
 *   **Result**: Opens the **Symbolic Solver** modal, pre-fills the integral problem, and triggers the Algebrite/Nerdamer pipeline immediately.
 
 #### Numerical Analysis Link
-`https://calcly.app/?tool=numerical&q=Standard+deviation+of+[10,20,30,40,50]&auto=true`
+`https://app.calcly.ai/?tool=numerical&q=Standard+deviation+of+[10,20,30,40,50]&auto=true`
 *   **Result**: Opens the **Numerical Solver** modal, pre-fills the data set, and calculates the result using the Math.js engine.
 
 ### 7.3 Integration Logic
