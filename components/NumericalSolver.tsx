@@ -84,8 +84,10 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose
   }, []);
 
   const addLog = (msg: string) => {
-    console.log(`[Numerical] ${msg}`);
-    setDebugLog(prev => [...prev, msg]);
+    const timestamp = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const logEntry = `[${timestamp}] ${msg}`;
+    console.log(`[NumericalSolver] ${msg}`);
+    setDebugLog(prev => [...prev, logEntry]);
   };
 
   const handleSolve = async (e?: React.FormEvent) => {
@@ -100,45 +102,78 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose
     setUsedEngine(null);
     setDebugLog([]); 
 
+    addLog(`🚀 Starting numerical solve for: "${queryToUse}"`);
+
     try {
-      if (typeof math === 'undefined') throw new Error("Math.js not loaded.");
-      addLog(`Input: "${queryToUse}"`);
+      if (typeof math === 'undefined') {
+          addLog("❌ Math.js not loaded.");
+          throw new Error("Numerical engine (Math.js) is not available.");
+      }
+
+      addLog("🤖 AI Parsing: Translating to Math.js syntax...");
       let parsedExpression = await parseNumericalExpression(queryToUse);
+      addLog(`✅ Parsed Expression: "${parsedExpression}"`);
+      
       setInterpretedQuery(parsedExpression === 'UNSUPPORTED_OPERATION' ? queryToUse : parsedExpression);
+      
       let finalResult = '';
       let engine = '';
 
       if (parsedExpression !== 'UNSUPPORTED_OPERATION') {
+          addLog("⚙️ Math.js Execution: Evaluating expression in local scope...");
           try {
              const res = math.evaluate(parsedExpression, scope);
              const formatted = math.format(res, { precision: 14 });
+             addLog(`📄 Math.js Output: "${formatted}"`);
+             
+             addLog("⚖️ AI Validation: Verifying numerical accuracy...");
              const validation = await validateMathResult(queryToUse, formatted);
+             addLog(`🧐 Validation Result: ${validation.isValid ? 'VALID' : 'INVALID'}`);
+             
              if (validation.isValid) {
                  finalResult = formatted;
                  engine = 'Math.js';
+             } else {
+                 addLog(`⚠️ Local result invalidated: ${validation.reason}`);
              }
-          } catch (e) {}
+          } catch (e: any) {
+              addLog(`❌ Math.js Error: ${e.message}`);
+          }
+      } else {
+          addLog("⚠️ Expression marked as UNSUPPORTED_OPERATION by parser.");
       }
 
       if (!finalResult) {
+          addLog(`🔮 Falling back to Gemini Pro AI for computation...`);
           const aiRes = await solveNumericalWithAI(queryToUse);
           if (aiRes && !aiRes.toLowerCase().includes('error')) {
+              addLog(`✅ AI Solver returned: "${aiRes}"`);
               finalResult = aiRes;
               engine = 'Gemini Pro (AI)';
               setInterpretedQuery(queryToUse);
-          } else throw new Error("Could not solve.");
+          } else {
+              addLog(`❌ AI Solver fallback failed.`);
+              throw new Error("Unable to compute numerical result.");
+          }
       }
 
       setResult(finalResult);
       setUsedEngine(engine);
+      addLog(`🎊 Successfully solved by ${engine}.`);
+
       try {
+          addLog("💾 Updating scope 'ans' with latest result...");
           const scopeVal = math.evaluate(finalResult);
           setScope((prev: any) => ({ ...prev, ans: scopeVal }));
-      } catch (e) {}
+      } catch (e) {
+          addLog(`⚠️ Could not update result to scope.`);
+      }
     } catch (err: any) {
-      setError(err.message || "Error");
+      addLog(`💥 CRITICAL ERROR: ${err.message}`);
+      setError(err.message || "An error occurred during numerical compute.");
     } finally {
       setIsProcessing(false);
+      addLog(`🏁 Pipeline finished.`);
     }
   };
 
@@ -180,7 +215,7 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose
                 </div>
             )}
             <div className="mt-auto flex justify-end"><button onClick={() => setShowDebug(!showDebug)} className="text-[10px] text-slate-400 font-mono hover:text-slate-600 transition-colors"><Terminal className="w-3 h-3 inline mr-1" />{showDebug ? 'Hide Logs' : 'Logs'}</button></div>
-            {showDebug && debugLog.length > 0 && <div className="mt-3 p-3 bg-slate-100 dark:bg-black/30 rounded-lg text-[10px] font-mono border border-slate-200">{debugLog.map((log, i) => <div key={i} className="mb-0.5 border-b last:border-0">{log}</div>)}</div>}
+            {showDebug && debugLog.length > 0 && <div className="mt-3 p-3 bg-slate-100 dark:bg-black/30 rounded-lg text-[10px] font-mono border border-slate-200 overflow-x-auto max-h-48">{debugLog.map((log, i) => <div key={i} className="mb-1 border-b last:border-0 py-1">{log}</div>)}</div>}
         </div>
       </div>
     </div>

@@ -425,9 +425,9 @@ export interface MathCommand {
 export const parseMathCommand = async (query: string): Promise<MathCommand> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
-  // Upgrade to Gemini 3 Pro Preview
-  const modelName = 'gemini-3-pro-preview';
-  const thinkingBudget = 32768; 
+  // TESTING: Using Gemini 3 Flash for parsing natural language math queries
+  const modelName = 'gemini-3-flash-preview';
+  const thinkingBudget = 24576; 
 
   const systemInstruction = `
     You are a Math Syntax Expert and Command Generator for symbolic math engines (Nerdamer, Algebrite).
@@ -509,7 +509,7 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
 export const parseNumericalExpression = async (query: string): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
-  // Upgrade to Gemini 3 Pro Preview
+  // TESTING: Using Gemini 3 Flash for numerical math parsing
   const systemInstruction = `
     You are a Math.js Translator. Your goal is to convert natural language queries into valid Math.js syntax.
     
@@ -536,11 +536,11 @@ export const parseNumericalExpression = async (query: string): Promise<string> =
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3-flash-preview',
       contents: { parts: [{ text: query }] },
       config: {
         systemInstruction: systemInstruction,
-        thinkingConfig: { thinkingBudget: 32768 },
+        thinkingConfig: { thinkingBudget: 24576 },
         responseMimeType: 'application/json'
       }
     });

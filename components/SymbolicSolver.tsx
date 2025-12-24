@@ -172,15 +172,17 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
   }, [isOpen]);
 
   const addLog = (msg: string) => {
-    console.log(`[Solver] ${msg}`);
-    setDebugLog(prev => [...prev, msg]);
+    const timestamp = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const logEntry = `[${timestamp}] ${msg}`;
+    console.log(`[SymbolicSolver] ${msg}`);
+    setDebugLog(prev => [...prev, logEntry]);
   };
 
   const quickSanityCheck = (result: string): { isValid: boolean; reason?: string } => {
-    if (!result) return { isValid: false, reason: "Empty" };
+    if (!result) return { isValid: false, reason: "Empty output" };
     const errorKeywords = ["Stop", "nil", "cannot solve", "Division by zero", "Invalid argument", "parse error"];
-    for (const err of errorKeywords) if (result.includes(err)) return { isValid: false, reason: err };
-    if (result === 'undefined' || result === 'null') return { isValid: false, reason: "Undefined" };
+    for (const err of errorKeywords) if (result.includes(err)) return { isValid: false, reason: `Error keyword: ${err}` };
+    if (result === 'undefined' || result === 'null') return { isValid: false, reason: "Result is undefined/null" };
     return { isValid: true };
   };
 
@@ -197,10 +199,14 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
     setUsedEngine(null);
     setDebugLog([]);
 
+    addLog(`🚀 Starting symbolic solve for: "${queryToUse}"`);
+
     try {
-      addLog("Parsing natural language...");
+      addLog("🤖 AI Parsing: Converting natural language to command...");
       const command = await parseMathCommand(queryToUse);
       setParsedCommand(command);
+      addLog(`✅ Parsed Command: ${JSON.stringify(command)}`);
+
       const { operation, expression, variable = 'x', start, end } = command;
       let finalLatex = '';
       let engineName = '';
@@ -208,7 +214,10 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
 
       const runNerdamer = () => {
         const NerdamerEngine = getNerdamer();
-        if (!NerdamerEngine) return null;
+        if (!NerdamerEngine) {
+            addLog("❌ Nerdamer library not found in scope.");
+            return null;
+        }
         try {
             let nerdString = '';
             switch (operation) {
@@ -223,17 +232,35 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
               case 'taylor': nerdString = `taylor(${expression}, ${variable}, ${toNerdamerVal(end) || '4'}, ${toNerdamerVal(start) || '0'})`; break;
               default: nerdString = expression; break;
             }
+            addLog(`⚙️ Nerdamer Execution: "${nerdString}"`);
             const obj = (operation === 'evaluate') ? NerdamerEngine(nerdString).evaluate() : NerdamerEngine(nerdString);
             const resultString = obj.text();
-            if (!quickSanityCheck(resultString).isValid || isUnresolved(resultString, operation)) return null;
+            addLog(`📄 Nerdamer Output: "${resultString}"`);
+
+            const sanity = quickSanityCheck(resultString);
+            if (!sanity.isValid) {
+                addLog(`⚠️ Nerdamer sanity check failed: ${sanity.reason}`);
+                return null;
+            }
+            if (isUnresolved(resultString, operation)) {
+                addLog(`⚠️ Nerdamer returned unresolved/echoed form.`);
+                return null;
+            }
+
             let dec = ''; try { dec = obj.evaluate().text('decimals'); } catch(e) {}
             return { latex: obj.toTeX(), decimal: dec };
-        } catch (e) { return null; }
+        } catch (e: any) { 
+            addLog(`❌ Nerdamer Exception: ${e.message}`);
+            return null; 
+        }
       };
 
       const runAlgebrite = () => {
          const AlgebriteEngine = getAlgebrite();
-         if (!AlgebriteEngine) return null;
+         if (!AlgebriteEngine) {
+             addLog("❌ Algebrite library not found in scope.");
+             return null;
+         }
          try {
               let algString = '';
               switch (operation) {
@@ -248,40 +275,79 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
                 case 'taylor': algString = `taylor(${expression},${variable},${toAlgebriteVal(start) || '0'},${toAlgebriteVal(end) || '4'})`; break;
                 default: algString = expression;
               }
+              addLog(`⚙️ Algebrite Execution: "${algString}"`);
               const res = AlgebriteEngine.run(algString);
-              if (!quickSanityCheck(res).isValid || isUnresolved(res, operation)) return null;
+              addLog(`📄 Algebrite Output: "${res}"`);
+
+              const sanity = quickSanityCheck(res);
+              if (!sanity.isValid) {
+                addLog(`⚠️ Algebrite sanity check failed: ${sanity.reason}`);
+                return null;
+              }
+              if (isUnresolved(res, operation)) {
+                addLog(`⚠️ Algebrite returned unresolved/echoed form.`);
+                return null;
+              }
+
               let dec = ''; try { dec = AlgebriteEngine.run(`float(${res})`); } catch(e) {}
               let latex = '';
               try { latex = getNerdamer()(res).toTeX(); } catch(e) { latex = res.replace(/\*/g, ''); }
               return { latex, decimal: dec };
-            } catch (e) { return null; }
+            } catch (e: any) { 
+                addLog(`❌ Algebrite Exception: ${e.message}`);
+                return null; 
+            }
       };
 
       const pipeline = LOCAL_SUPPORTED_OPS.includes(operation) ? (command.preferredEngine === 'algebrite' ? [{name:'Algebrite', run:runAlgebrite}, {name:'Nerdamer', run:runNerdamer}] : [{name:'Nerdamer', run:runNerdamer}, {name:'Algebrite', run:runAlgebrite}]) : [];
 
+      addLog(`🔍 Starting local engine pipeline...`);
       for (const step of pipeline) {
+          addLog(`🏃 Attempting engine: ${step.name}`);
           const output = step.run();
           if (output) {
-              const { latex, decimal } = output;
+              const { latex } = output;
+              addLog(`⚖️ AI Validation: Verifying local result for accuracy...`);
               const verification = await validateMathResult(queryToUse, latex);
+              addLog(`🧐 Validation Result: ${verification.isValid ? 'VALID' : 'INVALID'} (${verification.reason || 'No reason provided'})`);
+              
               if (verification.isValid) {
                   finalLatex = latex;
-                  if (decimal) setDecimalResult(decimal);
-                  engineName = step.name; solved = true; break; 
+                  if (output.decimal) setDecimalResult(output.decimal);
+                  engineName = step.name; 
+                  solved = true; 
+                  break; 
               }
           }
       }
 
       if (!solved) {
+         addLog(`🔮 Local engines failed. Falling back to Gemini Pro AI solver...`);
          const aiResult = await solveMathWithAI(queryToUse);
-         if (aiResult) { finalLatex = aiResult; setUsedEngine('Gemini Pro (AI)'); solved = true; }
-         else setError("Unable to solve.");
-      } else { setUsedEngine(engineName); }
+         if (aiResult) { 
+             addLog(`✅ AI Solver returned result: "${aiResult.substring(0, 50)}..."`);
+             finalLatex = aiResult; 
+             setUsedEngine('Gemini Pro (AI)'); 
+             solved = true; 
+         } else {
+             addLog(`❌ AI Solver also failed to return a result.`);
+             setError("Unable to solve query through symbolic or AI channels.");
+         }
+      } else { 
+          addLog(`🎊 Successfully solved by ${engineName}!`);
+          setUsedEngine(engineName); 
+      }
 
       if (solved) {
         setResultLatex(`$$ ${constructLHSLatex(command)} ${command.operation === 'solve' ? '\\implies' : '='} ${finalLatex.replace(/\\text{([^}]*)}/g, '$1').trim()} $$`);
       }
-    } catch (err: any) { setError(err.message || "Error"); } finally { setIsProcessing(false); }
+    } catch (err: any) { 
+        addLog(`💥 CRITICAL ERROR: ${err.message}`);
+        setError(err.message || "An error occurred during symbolic solve."); 
+    } finally { 
+        setIsProcessing(false); 
+        addLog(`🏁 Pipeline finished.`);
+    }
   };
 
   const handleExplain = () => {
@@ -323,7 +389,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
                 </div>
             )}
             <div className="mt-8 flex justify-end"><button onClick={() => setShowDebug(!showDebug)} className="text-[10px] text-slate-400 font-mono hover:text-slate-600 transition-colors"><Terminal className="w-3 h-3 inline mr-1" />{showDebug ? 'Hide Logs' : 'Logs'}</button></div>
-            {showDebug && debugLog.length > 0 && <div className="mt-3 p-4 bg-slate-100 dark:bg-black/30 rounded-lg text-[10px] font-mono text-slate-600 dark:text-slate-400 overflow-x-auto max-h-48 border border-slate-200">{debugLog.map((log, i) => <div key={i} className="mb-1 border-b last:border-0">{log}</div>)}</div>}
+            {showDebug && debugLog.length > 0 && <div className="mt-3 p-4 bg-slate-100 dark:bg-black/30 rounded-lg text-[10px] font-mono text-slate-600 dark:text-slate-400 overflow-x-auto max-h-48 border border-slate-200">{debugLog.map((log, i) => <div key={i} className="mb-1 border-b last:border-0 py-1">{log}</div>)}</div>}
         </div>
       </div>
     </div>
