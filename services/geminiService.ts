@@ -11,6 +11,11 @@ export interface MathCommand {
   complexityClass: 'standard' | 'abstract' | 'impossible_locally';
 }
 
+export interface NumericalCommand {
+  expression: string;
+  solvableLocally: boolean;
+}
+
 // Helper: Extract JSON from potentially messy model output
 const extractJSON = (raw: string): string => {
   let text = raw.trim();
@@ -232,44 +237,49 @@ export const solveMathWithAI = async (query: string): Promise<string> => {
   return response.text || "";
 };
 
-export const parseNumericalExpression = async (query: string): Promise<string> => {
+export const parseNumericalExpression = async (query: string): Promise<NumericalCommand> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: `Convert to Math.js syntax: "${query}"`,
     config: {
       systemInstruction: `Convert the query into a single Math.js compatible numerical expression. 
-      Output ONLY a JSON object with the "expression" field. 
+      Output ONLY a JSON object.
       
       CRITICAL MATH.JS SYNTAX RULES:
       1. UNIT MAPPING:
          - NEVER use 'mph' or 'kph' as these are not standard Math.js units.
-         - 'mph' -> 'mi/h'
-         - 'kph' -> 'km/h'
-         - 'miles' -> 'mi'
-         - 'feet' -> 'ft'
+         - 'mph' -> 'mi/h', 'kph' -> 'km/h', 'miles' -> 'mi', 'feet' -> 'ft'
       2. CONVERSIONS: Use the 'to' keyword (e.g., '50 mi/h to km/h').
       3. CUSTOM FUNCTIONS (integral, integrate, deriv, derivative, diff):
+         - integral("expression", "variable", start, end) -> 4 arguments.
+         - derivative("expression", "variable", point) -> 3 arguments.
          - The FIRST argument (expression) MUST be a DOUBLE-QUOTED STRING.
          - The SECOND argument (variable) MUST be a DOUBLE-QUOTED STRING.
          - CORRECT: integral("x^2", "x", 0, 1)
-         - WRONG: integral(x^2, x, 0, 1)
-      4. If unsupported, return 'UNSUPPORTED_OPERATION'.`,
+         - CORRECT: derivative("sin(x)", "x", 0)
+      
+      4. solvableLocally:
+         - true: If standard arithmetic, stats, conversions, or the custom functions above with valid params.
+         - false: If query is purely conceptual, complex statistics, or abstract numerical properties.
+      
+      If unsupported for local eval, return solvableLocally: false.`,
       thinkingConfig: { thinkingBudget: 4096 },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          expression: { type: Type.STRING }
+          expression: { type: Type.STRING },
+          solvableLocally: { type: Type.BOOLEAN }
         },
-        required: ["expression"]
+        required: ["expression", "solvableLocally"]
       }
     },
   });
   const raw = response.text || "{}";
   const cleaned = extractJSON(raw);
   const parsed = JSON.parse(cleaned);
-  return parsed.expression || "UNSUPPORTED_OPERATION";
+  return parsed as NumericalCommand;
 };
 
 export const solveNumericalWithAI = async (query: string): Promise<string> => {

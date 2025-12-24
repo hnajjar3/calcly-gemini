@@ -140,15 +140,17 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose
       }
 
       addLog("🤖 AI Parsing: Translating to Math.js syntax...");
-      let parsedExpression = await parseNumericalExpression(queryToUse);
+      const command = await parseNumericalExpression(queryToUse);
+      const { expression: parsedExpression, solvableLocally } = command;
       addLog(`✅ Parsed Expression: "${parsedExpression}"`);
+      addLog(`📊 Solvable Locally: ${solvableLocally}`);
       
       setInterpretedQuery(parsedExpression === 'UNSUPPORTED_OPERATION' ? queryToUse : parsedExpression);
       
       let finalResult = '';
       let engine = '';
 
-      if (parsedExpression !== 'UNSUPPORTED_OPERATION') {
+      if (solvableLocally && parsedExpression !== 'UNSUPPORTED_OPERATION') {
           addLog("⚙️ Math.js Execution: Evaluating expression in local scope...");
           try {
              const res = math.evaluate(parsedExpression, scope);
@@ -168,6 +170,8 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose
           } catch (e: any) {
               addLog(`❌ Math.js Error: ${e.message}`);
           }
+      } else if (!solvableLocally) {
+          addLog("🧠 Problem classified as not solvable locally. Bypassing to AI...");
       }
 
       if (!finalResult) {
