@@ -218,10 +218,10 @@ const attemptGenerate = async (
     parts: any[]
 ): Promise<SolverResponse> => {
     const ai = new GoogleGenAI({ apiKey: getApiKey() });
-    // Switch to gemini-2.5-pro for Pro mode to reduce rate limiting while keeping high intelligence
-    const modelName = modelMode === 'pro' ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
-    // Use conservative thinking budget to help with quota issues, or 0 for flash
-    const thinkingBudget = modelMode === 'pro' ? 2048 : 0; 
+    // Upgrade to Gemini 3 series
+    const modelName = modelMode === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
+    // Use appropriate thinking budget for Gemini 3 models
+    const thinkingBudget = modelMode === 'pro' ? 32768 : 24576; 
 
     // Prompt engineering
     let systemInstruction = `
@@ -425,10 +425,9 @@ export interface MathCommand {
 export const parseMathCommand = async (query: string): Promise<MathCommand> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
-  // Use Gemini 2.5 Pro for parsing. It offers better rate limits than 3-Pro-Preview
-  // while still maintaining excellent reasoning capabilities for syntax generation.
-  const modelName = 'gemini-2.5-pro';
-  const thinkingBudget = 2048; 
+  // Upgrade to Gemini 3 Pro Preview
+  const modelName = 'gemini-3-pro-preview';
+  const thinkingBudget = 32768; 
 
   const systemInstruction = `
     You are a Math Syntax Expert and Command Generator for symbolic math engines (Nerdamer, Algebrite).
@@ -510,7 +509,7 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
 export const parseNumericalExpression = async (query: string): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   
-  // Enhanced prompt with examples for robust Math.js translation
+  // Upgrade to Gemini 3 Pro Preview
   const systemInstruction = `
     You are a Math.js Translator. Your goal is to convert natural language queries into valid Math.js syntax.
     
@@ -537,11 +536,11 @@ export const parseNumericalExpression = async (query: string): Promise<string> =
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-pro',
+      model: 'gemini-3-pro-preview',
       contents: { parts: [{ text: query }] },
       config: {
         systemInstruction: systemInstruction,
-        thinkingConfig: { thinkingBudget: 2048 },
+        thinkingConfig: { thinkingBudget: 32768 },
         responseMimeType: 'application/json'
       }
     });
@@ -577,11 +576,11 @@ export const solveNumericalWithAI = async (query: string): Promise<string> => {
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-pro',
+      model: 'gemini-3-pro-preview',
       contents: { parts: [{ text: query }] },
       config: {
         systemInstruction: systemInstruction,
-        thinkingConfig: { thinkingBudget: 2048 }, 
+        thinkingConfig: { thinkingBudget: 32768 }, 
       }
     });
 
@@ -614,7 +613,8 @@ export const validateMathResult = async (query: string, result: string): Promise
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      // Use Gemini 3 Flash for fast validation
+      model: 'gemini-3-flash-preview',
       contents: { parts: [{ text: `User Query: "${query}"\nComputed Result: "${result}"` }] },
       config: {
         systemInstruction: systemInstruction,
@@ -652,11 +652,11 @@ export const explainMathResult = async (query: string, result: string, engine: s
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-pro', // Updated to 2.5 Pro for better reasoning
+      model: 'gemini-3-pro-preview',
       contents: { parts: [{ text: "Explain the steps." }] },
       config: {
         systemInstruction: systemInstruction,
-        thinkingConfig: { thinkingBudget: 2048 }, 
+        thinkingConfig: { thinkingBudget: 32768 }, 
       }
     });
 
@@ -683,11 +683,11 @@ export const solveMathWithAI = async (query: string): Promise<string> => {
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-pro', // Updated to 2.5 Pro for better handling of complex math fallbacks
+      model: 'gemini-3-pro-preview',
       contents: { parts: [{ text: query }] },
       config: {
         systemInstruction: systemInstruction,
-        thinkingConfig: { thinkingBudget: 2048 }, 
+        thinkingConfig: { thinkingBudget: 32768 }, 
       }
     });
 

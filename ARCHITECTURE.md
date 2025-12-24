@@ -112,11 +112,11 @@ Calcly uses specific Gemini models for specific tasks to balance cost, latency, 
 
 | Task | Model | Reason |
 | :--- | :--- | :--- |
-| **Parsing** | `gemini-2.5-pro` | High reasoning required to convert ambiguity to strict syntax. |
-| **General Solver (Pro)** | `gemini-2.5-pro` | Handles complex context, large context windows, and "Thinking" capability. |
-| **General Solver (Flash)** | `gemini-2.5-flash` | Low latency, fallback for timeouts/quotas. |
-| **Validation (Judge)** | `gemini-2.5-flash` | Extremely fast, cheap, sufficient for checking output validity. |
-| **Voice/Audio** | `gemini-2.5-pro` | Native multimodal capabilities for processing audio blobs. |
+| **Parsing** | `gemini-3-pro-preview` | Superior reasoning for syntax translation and handling ambiguity. |
+| **General Solver (Pro)** | `gemini-3-pro-preview` | State-of-the-art complex problem solving with large 'Thinking' budget. |
+| **General Solver (Flash)** | `gemini-3-flash-preview` | Balanced performance with high speed and reliability. |
+| **Validation (Judge)** | `gemini-3-flash-preview` | Extremely fast and cost-effective for verification cycles. |
+| **Voice/Audio** | `gemini-3-pro-preview` | High-fidelity multimodal processing of audio and visual inputs. |
 
 ---
 
