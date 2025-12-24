@@ -92,18 +92,6 @@ This component handles arithmetic, statistics, and unit conversions.
 2.  **Custom Functions**: The engine injects custom implementations of `integrate` and `deriv` using numerical methods (Simpson's Rule, Central Difference) into the `math.js` scope.
 3.  **Execution**: The parsed string is evaluated safely in the browser.
 
-### 3.3 General Knowledge Engine (`ResultCard.tsx`)
-For queries like "Compare GDP of US and China", Calcly forces the LLM to output **Structured JSON** rather than unstructured text.
-
-**Schema Enforcement**:
-The prompt includes a strict JSON schema requiring:
-*   `interpretation`: How the AI understood the query.
-*   `result`: An array of Markdown/LaTeX parts.
-*   `chart`: Configuration for Chart.js (type, datasets, labels).
-*   `sections`: Detailed breakdown (History, derivation, etc.).
-
-This allows the frontend to render interactive UI components (Charts, Tables) dynamically based on the response.
-
 ---
 
 ## 4. AI Model Strategy
@@ -125,28 +113,49 @@ Calcly uses specific Gemini models for specific tasks to balance cost, latency, 
 ### 5.1 Environment Security
 API keys are **never** hardcoded.
 1.  **Local Dev**: Loaded from `.env` via Vite.
-2.  **Production**: Injected by `server.js` into a global `window.env` object. This prevents keys from being baked into the static bundle, allowing for secure key rotation on the server side (Cloud Run).
+2.  **Production**: Injected by `server.js` into a global `window.env` object.
 
 ### 5.2 Error Handling
-The `geminiService` includes a robust error handler that:
-1.  Detects 429 (Quota) errors and suggests wait times.
-2.  Detects timeouts and automatically retries with a faster model (Flash).
-3.  Parses structured error messages from the Google Cloud API.
+The `geminiService` includes a robust error handler that detects 429 errors, timeouts, and server overloads, providing graceful retries and fallback models.
 
 ---
 
 ## 6. Directory Structure
+(See codebase for details).
 
-```
-/
-├── components/          # React UI Components
-│   ├── SymbolicSolver   # Nerdamer/Algebrite integration
-│   ├── NumericalSolver  # Math.js integration
-│   ├── ChartVisualization # Chart.js wrapper
-│   └── ResultCard       # Main display logic
-├── services/
-│   └── geminiService.ts # API wrapper, Prompt Engineering, Fallback logic
-├── types.ts             # TypeScript Interfaces (SolverResponse, HistoryItem)
-├── server.js            # Express server for static serving + Env Injection
-└── index.html           # Entry point with Env Placeholder
-```
+---
+
+## 7. Deep Linking & URL Integration
+
+Calcly supports powerful URL-based interactions, allowing external apps or sites to trigger specific computational workflows.
+
+### 7.1 Parameter Specification
+
+| Parameter | Values | Description |
+| :--- | :--- | :--- |
+| `q` | String (URI Encoded) | The actual computational query or math problem. |
+| `mode` | `pro`, `flash` | Sets the AI model intelligence level for the primary solver. |
+| `tool` | `symbolic`, `numerical` | If present, opens the specialized modal tool instead of the main solver. |
+| `auto` | `true`, `false` | If `true`, the query is automatically submitted on page load. |
+
+### 7.2 Use Case Examples
+
+#### General Knowledge / Structured Inquiry
+`https://calcly.app/?q=Compare+GDP+of+G7+countries&mode=pro&auto=true`
+*   **Result**: Opens the main solver, performs a multi-country comparison, and renders a Bar/Line chart automatically.
+
+#### Symbolic Math Deep-Link
+`https://calcly.app/?tool=symbolic&q=integrate+x^2+sin(x)&auto=true`
+*   **Result**: Opens the **Symbolic Solver** modal, pre-fills the integral problem, and triggers the Algebrite/Nerdamer pipeline immediately.
+
+#### Numerical Analysis Link
+`https://calcly.app/?tool=numerical&q=Standard+deviation+of+[10,20,30,40,50]&auto=true`
+*   **Result**: Opens the **Numerical Solver** modal, pre-fills the data set, and calculates the result using the Math.js engine.
+
+### 7.3 Integration Logic
+The `App.tsx` entry point utilizes a React `useEffect` hook to parse `window.location.search`.
+1.  It checks for `tool`. If matched, it sets the corresponding modal visibility state (`showSymbolicSolver` or `showNumericalSolver`).
+2.  If `q` is present, it passes the value as an `initialQuery` prop to the modal or sets the main input state.
+3.  If `auto=true`, it calls the respective internal submission handler (`handleSolve` or `handleSubmit`).
+
+---
