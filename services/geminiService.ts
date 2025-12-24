@@ -8,6 +8,7 @@ export interface MathCommand {
   start?: string;
   end?: string;
   preferredEngine?: 'nerdamer' | 'algebrite' | 'gemini';
+  complexityClass: 'standard' | 'abstract' | 'impossible_locally';
 }
 
 // Helper: Extract JSON from potentially messy model output
@@ -163,13 +164,16 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
       systemInstruction: `You are a strict mathematical translation layer for symbolic engines.
       Output ONLY the final JSON object. 
       
-      CRITICAL RULES:
-      - "variable" MUST be ONLY the single letter variable name (e.g. "x", "n"). 
-      - "start" and "end" MUST be strings representing the lower/upper bounds.
-      - If the query is symbolic or has non-numeric limits (e.g. "to infinity", "to N"), set "preferredEngine" to "gemini".
-      - Otherwise, prefer "nerdamer".
+      STRICT CONSTRAINTS:
+      - "variable" MUST be ONLY the single letter variable name (e.g. "x", "n", "k"). 
+      - DO NOT include internal reasoning, thought processes, or meta-commentary inside ANY JSON fields.
+      - "start" and "end" MUST be simple strings (e.g. "0", "Infinity", "pi").
+      - "complexityClass": 
+          - 'standard': Simple calculus, algebra, or matrix ops solvable by Algebrite/Nerdamer.
+          - 'abstract': Abstract series, multi-variable proofs, or non-standard notation.
+          - 'impossible_locally': If the problem is clearly too abstract for a simple JS library (e.g. "geometric series sum with variables a and r to infinity").
       
-      Operations: integrate, diff, solve, simplify, factor, limit, sum, determinant, invert.`,
+      If complexityClass is 'abstract' or 'impossible_locally', prefer 'gemini' as preferredEngine.`,
       thinkingConfig: { thinkingBudget: 4096 },
       responseMimeType: "application/json",
       responseSchema: {
@@ -180,9 +184,10 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
           variable: { type: Type.STRING },
           start: { type: Type.STRING },
           end: { type: Type.STRING },
-          preferredEngine: { type: Type.STRING }
+          preferredEngine: { type: Type.STRING },
+          complexityClass: { type: Type.STRING }
         },
-        required: ["operation", "expression"]
+        required: ["operation", "expression", "complexityClass"]
       }
     },
   });
@@ -220,7 +225,7 @@ export const solveMathWithAI = async (query: string): Promise<string> => {
     model: 'gemini-3-pro-preview',
     contents: query,
     config: {
-      systemInstruction: "Solve the math problem symbolically. Return only valid LaTeX for the result.",
+      systemInstruction: "Solve the math problem symbolically. Return only valid LaTeX for the result. Do not include any text explanation outside of the LaTeX.",
       thinkingConfig: { thinkingBudget: 32768 }
     },
   });

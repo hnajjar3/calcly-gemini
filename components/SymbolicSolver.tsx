@@ -1,3 +1,4 @@
+
 // Add missing React import
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Sigma, Play, RefreshCw, AlertTriangle, Terminal, ExternalLink } from '../components/icons';
@@ -29,6 +30,12 @@ const formatMatrixForNerdamer = (expr: string): string => {
 
 const formatMatrixForAlgebrite = (expr: string): string => typeof expr !== 'string' ? String(expr || '') : expr.replace(/\s/g, '');
 
+const isValidLimit = (v?: string | null): boolean => {
+  if (v == null) return false;
+  const s = String(v).toLowerCase().trim();
+  return s !== '' && s !== 'null' && s !== 'undefined' && s !== 'none' && s !== 'NaN';
+};
+
 // Canonicalize AI tokens to Library Tokens
 const getCanonicalOp = (op: string): string => {
     const o = op.toLowerCase().trim();
@@ -55,7 +62,7 @@ const constructLHSLatex = (cmd: MathCommand): string => {
   switch (op) {
       case 'limit': return `\\lim_{${cmd.variable} \\to ${valToTex(cmd.end)}} ${displayExpr}`;
       case 'integrate': 
-          const isDefinite = cmd.start != null && cmd.end != null;
+          const isDefinite = isValidLimit(cmd.start) && isValidLimit(cmd.end);
           return isDefinite ? `\\int_{${valToTex(cmd.start)}}^{${valToTex(cmd.end)}} ${displayExpr} \\, d${cmd.variable}` : `\\int ${displayExpr} \\, d${cmd.variable}`;
       case 'diff':
           return `\\frac{d}{d${cmd.variable}} \\left( ${displayExpr} \\right)`;
@@ -67,7 +74,7 @@ const constructLHSLatex = (cmd: MathCommand): string => {
 };
 
 const toNerdamerVal = (val?: string | null) => {
-  if (val == null || val === '') return '';
+  if (val == null || val === '' || !isValidLimit(val)) return '';
   const v = String(val).toLowerCase();
   if (v === 'inf' || v === 'infinity' || v === 'forever') return 'Infinity';
   if (v === 'pi') return 'PI';
@@ -76,7 +83,7 @@ const toNerdamerVal = (val?: string | null) => {
 };
 
 const toAlgebriteVal = (val?: string | null) => {
-  if (val == null || val === '') return '';
+  if (val == null || val === '' || !isValidLimit(val)) return '';
   const v = String(val).toLowerCase();
   if (v === 'infinity' || v === 'inf') return 'inf';
   if (v === 'pi') return 'pi'; 
@@ -183,112 +190,118 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
       setParsedCommand(command);
       addLog(`✅ Parsed Command: ${JSON.stringify(command)}`);
 
-      const { operation: rawOp, expression, variable = 'x', start, end } = command;
+      const { operation: rawOp, expression, variable = 'x', start, end, complexityClass } = command;
       const operation = getCanonicalOp(rawOp);
       addLog(`🧐 Canonical Operation: "${operation}"`);
+      addLog(`📊 Complexity Class: "${complexityClass}"`);
       
       let finalLatex = '';
       let engineName = '';
       let solved = false;
 
-      const runNerdamer = () => {
-        const NerdamerEngine = getNerdamer();
-        if (!NerdamerEngine) return null;
-        try {
-            let nerdString = '';
-            switch (operation) {
-              case 'integrate': 
-                nerdString = (start != null && end != null) 
-                  ? `defint(${expression}, ${toNerdamerVal(start)}, ${toNerdamerVal(end)}, ${variable})` 
-                  : `integrate(${expression}, ${variable})`; 
-                break;
-              case 'diff':
-                nerdString = `diff(${expression}, ${variable})`; break;
-              case 'solve': nerdString = (expression.includes(',') || expression.includes('=')) ? `solveEquations(${(expression.startsWith('[') || !expression.includes(',')) ? expression : `[${expression}]`})` : `solve(${expression}, ${variable})`; break;
-              case 'sum': 
-                nerdString = `sum(${expression}, ${variable}, ${toNerdamerVal(start) || '0'}, ${toNerdamerVal(end) || '10'})`; 
-                break;
-              case 'limit': nerdString = `limit(${expression}, ${variable}, ${toNerdamerVal(end) || 'Infinity'})`; break;
-              case 'factor': nerdString = `factor(${expression})`; break;
-              case 'determinant': nerdString = `determinant(${formatMatrixForNerdamer(expression)})`; break;
-              case 'invert': nerdString = `invert(${formatMatrixForNerdamer(expression)})`; break;
-              case 'taylor': nerdString = `taylor(${expression}, ${variable}, ${toNerdamerVal(end) || '4'}, ${toNerdamerVal(start) || '0'})`; break;
-              case 'simplify': nerdString = `simplify(${expression})`; break;
-              default: nerdString = expression; break;
-            }
-            addLog(`⚙️ Nerdamer Execution: "${nerdString}"`);
-            const obj = (operation === 'evaluate') ? NerdamerEngine(nerdString).evaluate() : NerdamerEngine(nerdString);
-            const resultString = obj.text();
-            addLog(`📄 Nerdamer Output: "${resultString}"`);
-            if (isUnresolved(resultString, operation)) return null;
-            let dec = ''; try { dec = obj.evaluate().text('decimals'); } catch(e) {}
-            return { latex: obj.toTeX(), decimal: dec };
-        } catch (e: any) { return null; }
-      };
-
-      const runAlgebrite = () => {
-         const AlgebriteEngine = getAlgebrite();
-         if (!AlgebriteEngine) return null;
-         try {
-              let algString = '';
-              switch (operation) {
-                case 'integrate': 
-                  algString = (start != null && end != null) 
-                    ? `defint(${expression},${variable},${toAlgebriteVal(start)},${toAlgebriteVal(end)})` 
-                    : (variable === 'x' ? `integral(${expression})` : `integral(${expression},${variable})`); 
-                  break;
-                case 'diff':
-                  algString = `d(${expression},${variable})`; break;
-                case 'solve': algString = expression.includes(',') ? `roots(${expression})` : `roots(${expression},${variable})`; break;
-                case 'sum': 
-                   algString = `sum(${expression},${variable},${toAlgebriteVal(start)},${toAlgebriteVal(end)})`; 
-                   break;
-                case 'limit': algString = `limit(${expression},${variable},${toAlgebriteVal(end)})`; break;
-                case 'factor': algString = `factor(${expression})`; break;
-                case 'determinant': algString = `det(${formatMatrixForAlgebrite(expression)})`; break;
-                case 'invert': algString = `inv(${formatMatrixForAlgebrite(expression)})`; break;
-                case 'taylor': algString = `taylor(${expression},${variable},${toAlgebriteVal(start) || '0'},${toAlgebriteVal(end) || '4'})`; break;
-                case 'simplify': algString = `simplify(${expression})`; break;
-                default: algString = expression;
-              }
-              addLog(`⚙️ Algebrite Execution: "${algString}"`);
-              const res = AlgebriteEngine.run(algString);
-              addLog(`📄 Algebrite Output: "${res}"`);
-              if (isUnresolved(res, operation)) return null;
-              let dec = ''; try { dec = AlgebriteEngine.run(`float(${res})`); } catch(e) {}
-              let latex = '';
-              try { 
-                // Attempt to convert Algebrite matrix string to Nerdamer/LaTeX
-                if (res.includes('[[')) {
-                  latex = formatMatrixToLatex(res);
-                } else {
-                  latex = getNerdamer()(res).toTeX(); 
+      // Decision logic: if impossible locally, skip directly to AI
+      if (complexityClass === 'impossible_locally' || complexityClass === 'abstract') {
+          addLog("🧠 Problem classified as abstract/impossible for local libraries. Bypassing to AI...");
+      } else {
+          const runNerdamer = () => {
+            const NerdamerEngine = getNerdamer();
+            if (!NerdamerEngine) return null;
+            try {
+                let nerdString = '';
+                switch (operation) {
+                  case 'integrate': 
+                    nerdString = (isValidLimit(start) && isValidLimit(end)) 
+                      ? `defint(${expression}, ${toNerdamerVal(start)}, ${toNerdamerVal(end)}, ${variable})` 
+                      : `integrate(${expression}, ${variable})`; 
+                    break;
+                  case 'diff':
+                    nerdString = `diff(${expression}, ${variable})`; break;
+                  case 'solve': nerdString = (expression.includes(',') || expression.includes('=')) ? `solveEquations(${(expression.startsWith('[') || !expression.includes(',')) ? expression : `[${expression}]`})` : `solve(${expression}, ${variable})`; break;
+                  case 'sum': 
+                    nerdString = `sum(${expression}, ${variable}, ${toNerdamerVal(start) || '0'}, ${toNerdamerVal(end) || '10'})`; 
+                    break;
+                  case 'limit': nerdString = `limit(${expression}, ${variable}, ${toNerdamerVal(end) || 'Infinity'})`; break;
+                  case 'factor': nerdString = `factor(${expression})`; break;
+                  case 'determinant': nerdString = `determinant(${formatMatrixForNerdamer(expression)})`; break;
+                  case 'invert': nerdString = `invert(${formatMatrixForNerdamer(expression)})`; break;
+                  case 'taylor': nerdString = `taylor(${expression}, ${variable}, ${toNerdamerVal(end) || '4'}, ${toNerdamerVal(start) || '0'})`; break;
+                  case 'simplify': nerdString = `simplify(${expression})`; break;
+                  default: nerdString = expression; break;
                 }
-              } catch(e) { 
-                latex = res.replace(/\*/g, ''); 
-              }
-              return { latex, decimal: dec };
+                addLog(`⚙️ Nerdamer Execution: "${nerdString}"`);
+                const obj = (operation === 'evaluate') ? NerdamerEngine(nerdString).evaluate() : NerdamerEngine(nerdString);
+                const resultString = obj.text();
+                addLog(`📄 Nerdamer Output: "${resultString}"`);
+                if (isUnresolved(resultString, operation)) return null;
+                let dec = ''; try { dec = obj.evaluate().text('decimals'); } catch(e) {}
+                return { latex: obj.toTeX(), decimal: dec };
             } catch (e: any) { return null; }
-      };
+          };
 
-      const isLocalSupported = LOCAL_SUPPORTED_OPS.includes(rawOp.toLowerCase()) || LOCAL_SUPPORTED_OPS.includes(operation);
-      const pipeline = isLocalSupported ? (command.preferredEngine === 'algebrite' ? [{name:'Algebrite', run:runAlgebrite}, {name:'Nerdamer', run:runNerdamer}] : [{name:'Nerdamer', run:runNerdamer}, {name:'Algebrite', run:runAlgebrite}]) : [];
+          const runAlgebrite = () => {
+             const AlgebriteEngine = getAlgebrite();
+             if (!AlgebriteEngine) return null;
+             try {
+                  let algString = '';
+                  switch (operation) {
+                    case 'integrate': 
+                      algString = (isValidLimit(start) && isValidLimit(end)) 
+                        ? `defint(${expression},${variable},${toAlgebriteVal(start)},${toAlgebriteVal(end)})` 
+                        : (variable === 'x' ? `integral(${expression})` : `integral(${expression},${variable})`); 
+                      break;
+                    case 'diff':
+                      algString = `d(${expression},${variable})`; break;
+                    case 'solve': algString = expression.includes(',') ? `roots(${expression})` : `roots(${expression},${variable})`; break;
+                    case 'sum': 
+                       algString = `sum(${expression},${variable},${toAlgebriteVal(start)},${toAlgebriteVal(end)})`; 
+                       break;
+                    case 'limit': algString = `limit(${expression},${variable},${toAlgebriteVal(end)})`; break;
+                    case 'factor': algString = `factor(${expression})`; break;
+                    case 'determinant': algString = `det(${formatMatrixForAlgebrite(expression)})`; break;
+                    case 'invert': algString = `inv(${formatMatrixForAlgebrite(expression)})`; break;
+                    case 'taylor': algString = `taylor(${expression},${variable},${toAlgebriteVal(start) || '0'},${toAlgebriteVal(end) || '4'})`; break;
+                    case 'simplify': algString = `simplify(${expression})`; break;
+                    default: algString = expression;
+                  }
+                  addLog(`⚙️ Algebrite Execution: "${algString}"`);
+                  const res = AlgebriteEngine.run(algString);
+                  addLog(`📄 Algebrite Output: "${res}"`);
+                  if (isUnresolved(res, operation)) return null;
+                  let dec = ''; try { dec = AlgebriteEngine.run(`float(${res})`); } catch(e) {}
+                  let latex = '';
+                  try { 
+                    // Attempt to convert Algebrite matrix string to Nerdamer/LaTeX
+                    if (res.includes('[[')) {
+                      latex = formatMatrixToLatex(res);
+                    } else {
+                      latex = getNerdamer()(res).toTeX(); 
+                    }
+                  } catch(e) { 
+                    latex = res.replace(/\*/g, ''); 
+                  }
+                  return { latex, decimal: dec };
+                } catch (e: any) { return null; }
+          };
 
-      for (const step of pipeline) {
-          addLog(`🏃 Attempting engine: ${step.name}`);
-          const output = step.run();
-          if (output) {
-              const { latex } = output;
-              addLog(`⚖️ AI Validation: Verifying local result...`);
-              const verification = await validateMathResult(queryToUse, latex);
-              addLog(`🧐 Validation: ${verification.isValid ? 'ACCEPTED' : 'REJECTED'}${verification.reason ? ` (${verification.reason})` : ''}`);
-              
-              if (verification.isValid) {
-                  finalLatex = latex;
-                  if (output.decimal) setDecimalResult(output.decimal);
-                  engineName = step.name; 
-                  solved = true; 
-                  break; 
+          const isLocalSupported = LOCAL_SUPPORTED_OPS.includes(rawOp.toLowerCase()) || LOCAL_SUPPORTED_OPS.includes(operation);
+          const pipeline = isLocalSupported ? (command.preferredEngine === 'algebrite' ? [{name:'Algebrite', run:runAlgebrite}, {name:'Nerdamer', run:runNerdamer}] : [{name:'Nerdamer', run:runNerdamer}, {name:'Algebrite', run:runAlgebrite}]) : [];
+
+          for (const step of pipeline) {
+              addLog(`🏃 Attempting engine: ${step.name}`);
+              const output = step.run();
+              if (output) {
+                  const { latex } = output;
+                  addLog(`⚖️ AI Validation: Verifying local result...`);
+                  const verification = await validateMathResult(queryToUse, latex);
+                  addLog(`🧐 Validation: ${verification.isValid ? 'ACCEPTED' : 'REJECTED'}${verification.reason ? ` (${verification.reason})` : ''}`);
+                  
+                  if (verification.isValid) {
+                      finalLatex = latex;
+                      if (output.decimal) setDecimalResult(output.decimal);
+                      engineName = step.name; 
+                      solved = true; 
+                      break; 
+                  }
               }
           }
       }
@@ -310,7 +323,11 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
       if (solved) {
         // Ensure the finalLatex is processed for matrix formatting if it's still raw nested arrays
         const displayResult = finalLatex.includes('[[') ? formatMatrixToLatex(finalLatex) : finalLatex.replace(/\\text{([^}]*)}/g, '$1').trim();
-        setResultLatex(`$$ ${constructLHSLatex(command)} ${operation === 'solve' ? '\\implies' : '='} ${displayResult} $$`);
+        
+        // Final sanity check for displayResult: if it contains dirty AI thinking text, strip it
+        const sanitizedResult = displayResult.replace(/DetectedInInputToEliminatePotentialErrorsNotNeededForJsonOnlyOneJsonObj/g, '');
+        
+        setResultLatex(`$$ ${constructLHSLatex(command)} ${operation === 'solve' ? '\\implies' : '='} ${sanitizedResult} $$`);
       }
     } catch (err: any) { 
         setError(err.message || "An error occurred."); 
