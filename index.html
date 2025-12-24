@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -6,15 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Calcly</title>
     
+    <script>
+      // Process shim: Define this immediately at the top of head so injection and SDK can use it
+      window.process = { 
+        env: { 
+          NODE_ENV: 'production'
+        } 
+      };
+    </script>
+
     <!-- Runtime Environment Injection Placeholder -->
     <!-- This will be replaced by server.js in production -->
     <!--ENV_INJECTION-->
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-      // Process shim to prevent ReferenceErrors in libraries expecting Node.js environment
-      window.process = { env: { NODE_ENV: 'production' } };
-      
       tailwind.config = {
         darkMode: 'class',
         theme: {

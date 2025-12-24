@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => {
              const script = `<script>if (window.process && window.process.env) { window.process.env.API_KEY = "${env.API_KEY || ''}"; }</script>`;
              return html.replace('<!--ENV_INJECTION-->', script);
           }
-          // During build/production, leave placeholder or inject empty default
+          // During build/production, leave placeholder.
           // The server.js will handle the actual injection at runtime.
           return html;
         }
