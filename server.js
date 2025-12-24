@@ -27,8 +27,8 @@ app.get('*', (req, res) => {
     // Runtime Injection: Get the API key from Cloud Run environment variables
     const apiKey = process.env.API_KEY || '';
     
-    // Inject into the HTML placeholder
-    const envScript = `<script>window.env = { API_KEY: "${apiKey}" };</script>`;
+    // Inject directly into the process shim defined in index.html
+    const envScript = `<script>if (window.process && window.process.env) { window.process.env.API_KEY = "${apiKey}"; }</script>`;
     const injectedHtml = htmlData.replace('<!--ENV_INJECTION-->', envScript);
 
     res.send(injectedHtml);

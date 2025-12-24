@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
         transformIndexHtml(html) {
           // During development (npm run dev), inject the key from .env file immediately
           if (mode === 'development') {
-             const script = `<script>window.env = { API_KEY: "${env.API_KEY || ''}" };</script>`;
+             const script = `<script>if (window.process && window.process.env) { window.process.env.API_KEY = "${env.API_KEY || ''}"; }</script>`;
              return html.replace('<!--ENV_INJECTION-->', script);
           }
           // During build/production, leave placeholder or inject empty default
