@@ -52,19 +52,29 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose
     const initMath = () => {
         if (typeof math !== 'undefined') {
             const integrateImpl = (expr: any, v: any, start: any, end: any) => {
-                     const expression = String(expr);
-                     const variable = String(v);
+                     // Ensure we have strings for math.evaluate
+                     const expression = String(expr).replace(/^"|"$/g, '');
+                     const variable = String(v).replace(/^"|"$/g, '');
                      const a = Number(start);
                      const b = Number(end);
+                     
+                     if (isNaN(a) || isNaN(b)) throw new Error("Invalid limits for integration");
+
                      const n = 1000;
                      const h = (b - a) / n;
                      let sum = 0;
-                     const fa = math.evaluate(expression, { [variable]: a });
-                     const fb = math.evaluate(expression, { [variable]: b });
+                     
+                     const getVal = (val: number) => {
+                       return math.evaluate(expression, { ...scope, [variable]: val });
+                     };
+
+                     const fa = getVal(a);
+                     const fb = getVal(b);
                      sum += fa + fb;
+                     
                      for (let i = 1; i < n; i++) {
                          const x = a + i * h;
-                         const val = math.evaluate(expression, { [variable]: x });
+                         const val = getVal(x);
                          if (i % 2 === 0) sum += 2 * val;
                          else sum += 4 * val;
                      }
@@ -72,12 +82,15 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose
             };
 
             const derivImpl = (expr: any, v: any, point: any) => {
-                     const expression = String(expr);
-                     const variable = String(v);
+                     const expression = String(expr).replace(/^"|"$/g, '');
+                     const variable = String(v).replace(/^"|"$/g, '');
                      const val = Number(point);
+                     
+                     if (isNaN(val)) throw new Error("Invalid point for derivative");
+
                      const h = 1e-7;
-                     const f_x_plus_h = math.evaluate(expression, { [variable]: val + h });
-                     const f_x_minus_h = math.evaluate(expression, { [variable]: val - h });
+                     const f_x_plus_h = math.evaluate(expression, { ...scope, [variable]: val + h });
+                     const f_x_minus_h = math.evaluate(expression, { ...scope, [variable]: val - h });
                      return (f_x_plus_h - f_x_minus_h) / (2 * h);
             };
 
@@ -97,7 +110,7 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose
         }
     };
     initMath();
-  }, []);
+  }, [scope]);
 
   const addLog = (msg: string) => {
     const timestamp = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -177,7 +190,9 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose
 
       try {
           addLog("💾 Updating scope 'ans' with latest result...");
-          const scopeVal = math.evaluate(finalResult);
+          // Ensure we can parse the result back into a number if possible
+          const cleanRes = finalResult.split(' ')[0]; // Handle cases like "1.23 km"
+          const scopeVal = math.evaluate(cleanRes);
           setScope((prev: any) => ({ ...prev, ans: scopeVal }));
       } catch (e) {
           addLog(`⚠️ Could not update result to scope.`);
@@ -325,7 +340,7 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose
             {/* Debug Logs */}
             <div className="mt-8 flex justify-between items-center px-1">
                 <div className="flex items-center space-x-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    <span>Scope: ans = {scope.ans}</span>
+                    <span>Scope: ans = {typeof scope.ans === 'object' ? JSON.stringify(scope.ans) : scope.ans}</span>
                 </div>
                 <button 
                     onClick={() => setShowDebug(!showDebug)}

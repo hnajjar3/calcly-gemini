@@ -1,5 +1,6 @@
 
-import { useState, useEffect, useRef } from 'react';
+// Add missing React import
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Sigma, Play, RefreshCw, AlertTriangle, Terminal, ExternalLink } from '../components/icons';
 import { parseMathCommand, MathCommand, solveMathWithAI, validateMathResult } from '../services/geminiService';
 import { LatexRenderer } from './LatexRenderer';
@@ -136,6 +137,7 @@ interface Props {
   onClose: () => void;
 }
 
+// Fixed: React.FC requires React namespace to be available
 export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose }) => {
   const [input, setInput] = useState('');
   const [parsedCommand, setParsedCommand] = useState<MathCommand | null>(null);
@@ -192,6 +194,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
     setDebugLog(prev => [...prev, logEntry]);
   };
 
+  // Fixed: React.FormEvent requires React namespace to be available
   const handleSolve = async (e?: React.FormEvent, overrideQuery?: string) => {
     e?.preventDefault();
     const queryToUse = overrideQuery || input || initialQuery;
@@ -235,7 +238,9 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
               case 'diff':
                 nerdString = `diff(${expression}, ${variable})`; break;
               case 'solve': nerdString = (expression.includes(',') || expression.includes('=')) ? `solveEquations(${(expression.startsWith('[') || !expression.includes(',')) ? expression : `[${expression}]`})` : `solve(${expression}, ${variable})`; break;
-              case 'sum': nerdString = `sum(${expression}, ${variable}, ${toNerdamerVal(start) || '0'}, ${toNerdamerVal(end) || '10'})`; break;
+              case 'sum': 
+                nerdString = `sum(${expression}, ${variable}, ${toNerdamerVal(start) || '0'}, ${toNerdamerVal(end) || '10'})`; 
+                break;
               case 'limit': nerdString = `limit(${expression}, ${variable}, ${toNerdamerVal(end) || 'Infinity'})`; break;
               case 'factor': nerdString = `factor(${expression})`; break;
               case 'determinant': nerdString = `determinant(${formatMatrixForNerdamer(expression)})`; break;
@@ -268,7 +273,9 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
                 case 'diff':
                   algString = `d(${expression},${variable})`; break;
                 case 'solve': algString = expression.includes(',') ? `roots(${expression})` : `roots(${expression},${variable})`; break;
-                case 'sum': algString = `sum(${expression},${variable},${toAlgebriteVal(start)},${toAlgebriteVal(end)})`; break;
+                case 'sum': 
+                   algString = `sum(${expression},${variable},${toAlgebriteVal(start)},${toAlgebriteVal(end)})`; 
+                   break;
                 case 'limit': algString = `limit(${expression},${variable},${toAlgebriteVal(end)})`; break;
                 case 'factor': algString = `factor(${expression})`; break;
                 case 'determinant': algString = `det(${formatMatrixForAlgebrite(expression)})`; break;
