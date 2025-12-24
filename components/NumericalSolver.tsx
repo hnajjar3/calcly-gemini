@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Nu, Play, RefreshCw, AlertTriangle, Terminal, Trash2, Copy, CheckCircle2, Calculator, Sparkles, Mic, ArrowRight } from '../components/icons';
 import { parseNumericalExpression, validateMathResult, solveNumericalWithAI } from '../services/geminiService';
@@ -48,39 +47,56 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose
     }
   }, [isOpen, initialQuery]);
 
+  // Reliable Math.js Initialization
   useEffect(() => {
-    if (typeof math !== 'undefined') {
-        math.import({
-            integrate: (expr: any, v: any, start: any, end: any) => {
-                 const expression = String(expr);
-                 const variable = String(v);
-                 const a = Number(start);
-                 const b = Number(end);
-                 const n = 1000;
-                 const h = (b - a) / n;
-                 let sum = 0;
-                 const fa = math.evaluate(expression, { [variable]: a });
-                 const fb = math.evaluate(expression, { [variable]: b });
-                 sum += fa + fb;
-                 for (let i = 1; i < n; i++) {
-                     const x = a + i * h;
-                     const val = math.evaluate(expression, { [variable]: x });
-                     if (i % 2 === 0) sum += 2 * val;
-                     else sum += 4 * val;
-                 }
-                 return (h / 3) * sum;
-            },
-            deriv: (expr: any, v: any, point: any) => {
-                 const expression = String(expr);
-                 const variable = String(v);
-                 const val = Number(point);
-                 const h = 1e-7;
-                 const f_x_plus_h = math.evaluate(expression, { [variable]: val + h });
-                 const f_x_minus_h = math.evaluate(expression, { [variable]: val - h });
-                 return (f_x_plus_h - f_x_minus_h) / (2 * h);
-            }
-        }, { override: true });
-    }
+    const initMath = () => {
+        if (typeof math !== 'undefined') {
+            const integrateImpl = (expr: any, v: any, start: any, end: any) => {
+                     const expression = String(expr);
+                     const variable = String(v);
+                     const a = Number(start);
+                     const b = Number(end);
+                     const n = 1000;
+                     const h = (b - a) / n;
+                     let sum = 0;
+                     const fa = math.evaluate(expression, { [variable]: a });
+                     const fb = math.evaluate(expression, { [variable]: b });
+                     sum += fa + fb;
+                     for (let i = 1; i < n; i++) {
+                         const x = a + i * h;
+                         const val = math.evaluate(expression, { [variable]: x });
+                         if (i % 2 === 0) sum += 2 * val;
+                         else sum += 4 * val;
+                     }
+                     return (h / 3) * sum;
+            };
+
+            const derivImpl = (expr: any, v: any, point: any) => {
+                     const expression = String(expr);
+                     const variable = String(v);
+                     const val = Number(point);
+                     const h = 1e-7;
+                     const f_x_plus_h = math.evaluate(expression, { [variable]: val + h });
+                     const f_x_minus_h = math.evaluate(expression, { [variable]: val - h });
+                     return (f_x_plus_h - f_x_minus_h) / (2 * h);
+            };
+
+            // Inject methods into global math instance
+            math.import({
+                integrate: integrateImpl,
+                integral: integrateImpl,
+                deriv: derivImpl,
+                derivative: derivImpl,
+                diff: derivImpl
+            }, { override: true });
+            
+            console.log("[NumericalSolver] Math.js functions registered successfully.");
+        } else {
+            console.warn("[NumericalSolver] math.js not found, retrying...");
+            setTimeout(initMath, 500);
+        }
+    };
+    initMath();
   }, []);
 
   const addLog = (msg: string) => {
@@ -139,17 +155,15 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose
           } catch (e: any) {
               addLog(`❌ Math.js Error: ${e.message}`);
           }
-      } else {
-          addLog("⚠️ Expression marked as UNSUPPORTED_OPERATION by parser.");
       }
 
       if (!finalResult) {
-          addLog(`🔮 Falling back to Gemini Pro AI for computation...`);
+          addLog(`🔮 Falling back to Gemini AI for computation...`);
           const aiRes = await solveNumericalWithAI(queryToUse);
           if (aiRes && !aiRes.toLowerCase().includes('error')) {
               addLog(`✅ AI Solver returned: "${aiRes}"`);
               finalResult = aiRes;
-              engine = 'Gemini Pro (AI)';
+              engine = 'Gemini (AI)';
               setInterpretedQuery(queryToUse);
           } else {
               addLog(`❌ AI Solver fallback failed.`);
@@ -181,41 +195,156 @@ export const NumericalSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm animate-fade-in">
-      <div className="w-full max-w-2xl bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col max-h-[95vh]">
-        <div className="flex justify-between items-center p-5 border-b border-slate-100 bg-emerald-50/50 dark:bg-emerald-900/10">
-          <div className="flex items-center space-x-2 text-emerald-700 dark:text-emerald-400">
-            <div className="p-1.5 bg-emerald-100 dark:bg-emerald-900/50 rounded-lg"><Nu className="w-5 h-5" /></div>
-            <div><h3 className="font-bold text-lg leading-tight">Numerical Solver</h3><p className="text-[10px] uppercase tracking-wider opacity-70">Math.js Engine</p></div>
+      <div className="w-full max-w-2xl bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col max-h-[90vh]">
+        
+        {/* Header */}
+        <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-slate-700/50 bg-amber-50/50 dark:bg-amber-900/10">
+          <div className="flex items-center space-x-2 text-amber-700 dark:text-amber-400">
+            <div className="p-1.5 bg-amber-100 dark:bg-amber-900/50 rounded-lg"><Nu className="w-5 h-5" /></div>
+            <div>
+                <h3 className="font-bold text-lg leading-tight">Numerical Solver</h3>
+                <p className="text-[10px] uppercase tracking-wider font-semibold opacity-70">Deterministic Engine</p>
+            </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-500"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-500 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
         </div>
-        <div className="p-6 overflow-y-auto custom-scrollbar flex-1 flex flex-col">
-            <form onSubmit={handleSolve} className="relative mb-6 shrink-0 group">
-                <div className="relative">
-                    <textarea ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)} placeholder="e.g., Integrate x^2 from 0 to 1" className="w-full pl-5 pr-14 py-4 h-32 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 text-lg resize-none focus:outline-none" spellCheck={false} />
-                    <div className="absolute right-3 top-3"><button type="button" onClick={() => setInput('')} className="p-2 text-slate-400 hover:text-red-500 rounded-lg"><Trash2 className="w-4 h-4" /></button></div>
-                    <button type="submit" disabled={(!input.trim() && !initialQuery) || isProcessing} className="absolute right-3 bottom-3 p-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md transition-all">
-                        {isProcessing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5 fill-current" />}
+
+        <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+            {/* Input Form */}
+            <form onSubmit={handleSolve} className="mb-6">
+                <div className="relative group">
+                    <textarea
+                        ref={textareaRef}
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        placeholder="Enter numerical query (e.g., Integrate x^2 from 0 to 1)"
+                        className="w-full p-4 pr-14 min-h-[100px] rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all resize-none font-medium"
+                    />
+                    <button 
+                        type="submit" 
+                        disabled={!input.trim() || isProcessing}
+                        className="absolute right-3 bottom-3 p-3 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-300 text-white rounded-xl shadow-lg shadow-amber-600/20 transition-all active:scale-95 flex items-center justify-center"
+                    >
+                        {isProcessing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5 ml-0.5" />}
                     </button>
                 </div>
             </form>
-            {(!result && !error) && (
-                <div className="mb-6 animate-fade-in">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Try these</p>
-                    <div className="flex flex-wrap gap-2">{SAMPLE_PROMPTS.map((p, i) => <button key={i} onClick={() => setInput(p)} className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-100 rounded-lg text-xs hover:border-emerald-200 transition-colors">{p}</button>)}</div>
+
+            {/* Quick Suggestions */}
+            {!result && !error && !isProcessing && (
+                <div className="mb-8">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 px-1">Examples</p>
+                    <div className="flex flex-wrap gap-2">
+                        {SAMPLE_PROMPTS.map((p, i) => (
+                            <button 
+                                key={i} 
+                                onClick={() => { setInput(p); setTimeout(() => handleSolve(), 10); }}
+                                className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-600 dark:text-slate-400 hover:border-amber-400 dark:hover:border-amber-600 hover:text-amber-600 transition-all shadow-sm flex items-center group"
+                            >
+                                <Sparkles className="w-3 h-3 mr-1.5 opacity-50 group-hover:opacity-100" />
+                                {p}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             )}
-            {error && <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm flex items-center space-x-2"><AlertTriangle className="w-4 h-4" /><span>{error}</span></div>}
+
+            {/* Error State */}
+            {error && (
+                <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 text-red-600 dark:text-red-400 rounded-2xl flex items-start space-x-3 animate-fade-in">
+                    <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+                    <div className="text-sm">
+                        <p className="font-bold mb-1">Compute Error</p>
+                        <p className="opacity-80">{error}</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Result Display */}
             {result && !error && (
-                <div className="mb-6 p-6 bg-emerald-50/50 dark:bg-slate-800 border border-emerald-100 rounded-2xl shadow-sm relative animate-fade-in-up">
-                    {usedEngine && <div className="absolute top-4 right-4 flex items-center px-2 py-1 rounded-md bg-white border border-emerald-100 text-[10px] font-semibold text-slate-500"><span className="mr-1">{usedEngine.includes('AI') ? '✨' : '✅'}</span>{usedEngine}</div>}
-                    {interpretedQuery && <div className="mb-4 pb-4 border-b border-emerald-100"><p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Expression</p><div className="font-mono text-sm text-slate-600 dark:text-slate-300">{interpretedQuery}</div></div>}
-                    <p className="text-xs font-bold text-emerald-600 uppercase mb-2">Result</p>
-                    <div className="text-2xl sm:text-4xl font-mono text-slate-900 dark:text-slate-100 break-words">{result}</div>
+                <div className="space-y-6 animate-fade-in-up">
+                    <div className="bg-gradient-to-br from-amber-50 to-white dark:from-slate-800 dark:to-slate-800/50 rounded-2xl p-6 shadow-md border border-amber-100/50 dark:border-slate-700 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+                            <Calculator className="w-24 h-24" />
+                        </div>
+                        
+                        <div className="relative z-10">
+                            <div className="flex items-center justify-between mb-4">
+                                <h4 className="text-xs font-bold text-amber-500 uppercase tracking-widest">Calculated Result</h4>
+                                {usedEngine && (
+                                    <div className="flex items-center px-2 py-1 rounded-md bg-white/50 dark:bg-slate-900/50 border border-amber-100 dark:border-slate-700 text-[10px] font-semibold text-slate-500">
+                                        <CheckCircle2 className="w-3 h-3 mr-1.5 text-amber-500" />
+                                        Solved by {usedEngine}
+                                    </div>
+                                )}
+                            </div>
+                            
+                            {interpretedQuery && (
+                                <div className="text-xs text-slate-400 dark:text-slate-500 mb-2 font-mono truncate">
+                                    Expression: {interpretedQuery}
+                                </div>
+                            )}
+                            
+                            <div className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-slate-100 break-all mb-4">
+                                {result}
+                            </div>
+
+                            <div className="flex items-center space-x-3 pt-4 border-t border-amber-100/50 dark:border-slate-700">
+                                <button 
+                                    onClick={() => { navigator.clipboard.writeText(result) }}
+                                    className="flex items-center text-[10px] font-bold text-slate-500 hover:text-amber-600 transition-colors"
+                                >
+                                    <Copy className="w-3.5 h-3.5 mr-1.5" />
+                                    COPY RESULT
+                                </button>
+                                <button 
+                                    onClick={() => { 
+                                        const q = `Explain step-by-step: ${input}. The numerical result is ${result}.`;
+                                        window.location.href = `/?q=${encodeURIComponent(q)}&mode=pro&auto=true`;
+                                    }}
+                                    className="flex items-center text-[10px] font-bold text-slate-500 hover:text-amber-600 transition-colors"
+                                >
+                                    <ArrowRight className="w-3.5 h-3.5 mr-1.5" />
+                                    FULL ANALYSIS
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-center">
+                        <button onClick={() => { setInput(''); setResult(null); setError(null); }} className="text-xs font-bold text-slate-400 hover:text-slate-600 flex items-center transition-colors">
+                            <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                            CLEAR AND START OVER
+                        </button>
+                    </div>
                 </div>
             )}
-            <div className="mt-auto flex justify-end"><button onClick={() => setShowDebug(!showDebug)} className="text-[10px] text-slate-400 font-mono hover:text-slate-600 transition-colors"><Terminal className="w-3 h-3 inline mr-1" />{showDebug ? 'Hide Logs' : 'Logs'}</button></div>
-            {showDebug && debugLog.length > 0 && <div className="mt-3 p-3 bg-slate-100 dark:bg-black/30 rounded-lg text-[10px] font-mono border border-slate-200 overflow-x-auto max-h-48">{debugLog.map((log, i) => <div key={i} className="mb-1 border-b last:border-0 py-1">{log}</div>)}</div>}
+
+            {/* Debug Logs */}
+            <div className="mt-8 flex justify-between items-center px-1">
+                <div className="flex items-center space-x-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    <span>Scope: ans = {scope.ans}</span>
+                </div>
+                <button 
+                    onClick={() => setShowDebug(!showDebug)}
+                    className="text-[10px] text-slate-400 font-mono hover:text-slate-600 transition-colors flex items-center"
+                >
+                    <Terminal className="w-3 h-3 mr-1" />
+                    {showDebug ? 'HIDE PIPELINE LOGS' : 'VIEW PIPELINE LOGS'}
+                </button>
+            </div>
+
+            {showDebug && debugLog.length > 0 && (
+                <div className="mt-3 p-4 bg-slate-100 dark:bg-black/30 rounded-xl text-[10px] font-mono text-slate-600 dark:text-slate-400 overflow-x-auto max-h-48 border border-slate-200 dark:border-slate-800 custom-scrollbar animate-fade-in">
+                    {debugLog.map((log, i) => (
+                        <div key={i} className="mb-1 border-b border-slate-200/50 dark:border-slate-800 last:border-0 py-1">
+                            {log}
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
       </div>
     </div>

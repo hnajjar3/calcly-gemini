@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { SolverResponse, ModelMode } from "../types";
 
@@ -252,7 +251,18 @@ export const parseNumericalExpression = async (query: string): Promise<string> =
   const modelName = 'gemini-3-flash-preview';
   const thinkingBudget = 8192;
   console.log(`[GeminiService] Parsing Numerical with ${modelName} (Thinking Enabled)`);
-  const systemInstruction = `Convert natural language to Math.js syntax. Output JSON: { "expression": "string" }.`;
+  
+  const systemInstruction = `Convert natural language to Math.js syntax. Output JSON: { "expression": "string" }.
+  
+  CRITICAL SYNTAX RULES:
+  - You MUST use double quotes for the expression and variable strings inside custom functions to prevent premature evaluation.
+  - CUSTOM FUNCTIONS:
+    1. integrate("expression", "variable", start, end)
+    2. deriv("expression", "variable", point)
+  
+  Example 1: "integrate x^2 from 0 to 1" -> { "expression": "integrate(\"x^2\", \"x\", 0, 1)" }
+  Example 2: "derivative of sin(x) at 0" -> { "expression": "deriv(\"sin(x)\", \"x\", 0)" }
+  Example 3: "50 mph to km/h" -> { "expression": "50 mph to km/h" }`;
   
   try {
     const response = await ai.models.generateContent({
