@@ -146,11 +146,11 @@ const attemptGenerate = async (modelMode: ModelMode, parts: any[]): Promise<Solv
 
     console.log(`[GeminiService] Initializing ${modelName} with thinking budget: ${thinkingBudget}`);
 
-    let systemInstruction = `You are OmniSolver, an advanced computational intelligence engine. JSON output required.`;
+    let systemInstruction = `You are OmniSolver, an advanced computational intelligence engine. JSON output required. Always reason step-by-step before producing the final JSON.`;
     systemInstruction += modelMode === 'flash' ? `\n[MODE: FLASH - SPEED]` : `\n[MODE: PRO INTELLIGENCE]`;
     systemInstruction += `\n\nJSON SCHEMA:\n${schemaDefinition}`;
 
-    const timeoutMs = modelMode === 'pro' ? 45000 : 20000;
+    const timeoutMs = modelMode === 'pro' ? 45000 : 25000;
     const response = await withTimeout<GenerateContentResponse>(
       ai.models.generateContent({
         model: modelName,
@@ -206,16 +206,40 @@ export interface MathCommand {
 export const parseMathCommand = async (query: string): Promise<MathCommand> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   const modelName = 'gemini-3-flash-preview';
-  const thinkingBudget = 24576; 
-  console.log(`[GeminiService] Parsing Math with ${modelName}`);
+  const thinkingBudget = 8192; 
+  console.log(`[GeminiService] Parsing Math with ${modelName} (Thinking Enabled)`);
 
-  const systemInstruction = `Normalize natural language math queries into JSON: { "operation": "string", "expression": "string", "variable": "string", "start": "string", "end": "string" }`;
+  const systemInstruction = `You are a mathematical translation layer for Nerdamer and Algebrite.
+  Convert queries into the following strict JSON schema.
+  
+  ALLOWED OPERATION TOKENS (Use these exactly):
+  - "integrate" (for integral, integration, area under curve)
+  - "diff" (for derivative, differentiate, differentiation, slope)
+  - "solve" (for find roots, solve for x, equations)
+  - "simplify" (for expand, reduce, simple form)
+  - "factor" (for factorization)
+  - "limit" (for limits)
+  - "sum" (for series summation)
+  - "determinant" (for matrix determinant)
+  - "invert" (for matrix inverse)
+  
+  SYNTAX RULES:
+  - Use "^" for powers.
+  - Use "exp(x)" for natural exponent.
+  - For indefinite integrals, set "start" and "end" to null.
+  - If no variable is specified, assume "x".
+  
+  Format: { "operation": "string", "expression": "string", "variable": "string", "start": "string|null", "end": "string|null" }`;
 
   try {
     const response = await ai.models.generateContent({
       model: modelName,
       contents: { parts: [{ text: query }] },
-      config: { systemInstruction, thinkingConfig: { thinkingBudget }, responseMimeType: 'application/json' }
+      config: { 
+        systemInstruction, 
+        thinkingConfig: { thinkingBudget }, 
+        responseMimeType: 'application/json' 
+      }
     });
     return JSON.parse(extractJSON(response.text || '')) as MathCommand;
   } catch (error) {
@@ -225,13 +249,20 @@ export const parseMathCommand = async (query: string): Promise<MathCommand> => {
 
 export const parseNumericalExpression = async (query: string): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
-  console.log(`[GeminiService] Parsing Numerical with gemini-3-flash-preview`);
-  const systemInstruction = `Convert natural language to Math.js syntax. Output JSON: { "expression": "string" }`;
+  const modelName = 'gemini-3-flash-preview';
+  const thinkingBudget = 8192;
+  console.log(`[GeminiService] Parsing Numerical with ${modelName} (Thinking Enabled)`);
+  const systemInstruction = `Convert natural language to Math.js syntax. Output JSON: { "expression": "string" }.`;
+  
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: modelName,
       contents: { parts: [{ text: query }] },
-      config: { systemInstruction, thinkingConfig: { thinkingBudget: 24576 }, responseMimeType: 'application/json' }
+      config: { 
+        systemInstruction, 
+        thinkingConfig: { thinkingBudget }, 
+        responseMimeType: 'application/json' 
+      }
     });
     return JSON.parse(extractJSON(response.text || '')).expression || query;
   } catch (error) {
@@ -243,9 +274,12 @@ export const solveNumericalWithAI = async (query: string): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3-flash-preview',
       contents: { parts: [{ text: query }] },
-      config: { systemInstruction: "Output ONLY the final numerical result.", thinkingConfig: { thinkingBudget: 32768 } }
+      config: { 
+        systemInstruction: "Output ONLY the final numerical result as a single value.", 
+        thinkingConfig: { thinkingBudget: 4096 } 
+      }
     });
     return response.text?.trim() || "Error";
   } catch (error) {
@@ -255,14 +289,24 @@ export const solveNumericalWithAI = async (query: string): Promise<string> => {
 
 export const validateMathResult = async (query: string, result: string): Promise<{ isValid: boolean; reason?: string }> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
+  const timeoutMs = 8000;
+
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: { parts: [{ text: `Query: "${query}"\nResult: "${result}"` }] },
-      config: { systemInstruction: "Verify if the result is correct. Return JSON {isValid: boolean}.", responseMimeType: 'application/json' }
-    });
+    const response = await withTimeout<GenerateContentResponse>(
+      ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: { parts: [{ text: `Query: "${query}"\nResult: "${result}"` }] },
+        config: { 
+          systemInstruction: "Verify if the provided result is mathematically correct for the query. Output JSON: {isValid: boolean, reason?: string}.", 
+          responseMimeType: 'application/json',
+          thinkingConfig: { thinkingBudget: 4096 }
+        }
+      }),
+      timeoutMs
+    );
     return JSON.parse(extractJSON(response.text || ''));
   } catch (error) {
+    console.warn("[GeminiService] Validation failed or timed out. Defaulting to valid.", error);
     return { isValid: true };
   }
 };
@@ -271,9 +315,12 @@ export const explainMathResult = async (query: string, result: string, engine: s
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3-flash-preview',
       contents: { parts: [{ text: "Explain." }] },
-      config: { systemInstruction: `Explain step-by-step how to get ${result} from ${query}.`, thinkingConfig: { thinkingBudget: 32768 } }
+      config: { 
+        systemInstruction: `Provide a clear step-by-step explanation of how to arrive at "${result}" from "${query}".`, 
+        thinkingConfig: { thinkingBudget: 4096 } 
+      }
     });
     return response.text || "No explanation.";
   } catch (error) {
@@ -285,9 +332,12 @@ export const solveMathWithAI = async (query: string): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3-flash-preview',
       contents: { parts: [{ text: query }] },
-      config: { systemInstruction: "Solve and output ONLY the final LaTeX result in $$...$$.", thinkingConfig: { thinkingBudget: 32768 } }
+      config: { 
+        systemInstruction: "Solve and output ONLY the final LaTeX result in $$...$$.", 
+        thinkingConfig: { thinkingBudget: 8192 } 
+      }
     });
     return response.text?.trim() || "";
   } catch (error) {

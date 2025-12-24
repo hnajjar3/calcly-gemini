@@ -1,13 +1,15 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Sigma, ArrowRight, Play, RefreshCw, AlertTriangle, Calculator, Zap, Terminal, CheckCircle2, Sparkles, ExternalLink } from '../components/icons';
+import { useState, useEffect, useRef } from 'react';
+import { X, Sigma, Play, RefreshCw, AlertTriangle, Terminal, ExternalLink } from '../components/icons';
 import { parseMathCommand, MathCommand, solveMathWithAI, validateMathResult } from '../services/geminiService';
 import { LatexRenderer } from './LatexRenderer';
 
 declare const nerdamer: any;
 
 const LOCAL_SUPPORTED_OPS = [
-  'integrate', 'differentiate', 'solve', 'simplify', 
+  'integrate', 'integral', 'integration', 
+  'diff', 'differentiate', 'differentiation', 'derivative', 
+  'solve', 'simplify', 'expand',
   'factor', 'limit', 'sum', 'evaluate', 
   'determinant', 'invert', 'taylor'
 ];
@@ -56,22 +58,36 @@ const formatMatrixToLatex = (str: string): string => {
   return str;
 };
 
+// Canonicalize AI tokens to Library Tokens
+const getCanonicalOp = (op: string): string => {
+    const o = op.toLowerCase().trim();
+    if (['integrate', 'integral', 'integration'].includes(o)) return 'integrate';
+    if (['diff', 'differentiate', 'differentiation', 'derivative'].includes(o)) return 'diff';
+    if (['simplify', 'expand'].includes(o)) return 'simplify';
+    return o;
+};
+
 const constructLHSLatex = (cmd: MathCommand): string => {
   let expr = cmd.expression;
   const displayExpr = formatMatrixToLatex(expr) || expr; 
-  const valToTex = (v?: string) => {
+  const valToTex = (v?: string | null) => {
     if (!v) return '';
-    const l = v.toLowerCase();
+    const l = String(v).toLowerCase();
     if (l === 'inf' || l === 'infinity') return '\\infty';
     if (l === '-inf' || l === '-infinity') return '-\\infty';
     if (l === 'pi') return '\\pi';
-    return v;
+    return String(v);
   };
 
-  switch (cmd.operation) {
+  const op = getCanonicalOp(cmd.operation);
+
+  switch (op) {
       case 'limit': return `\\lim_{${cmd.variable} \\to ${valToTex(cmd.end)}} ${displayExpr}`;
-      case 'integrate': return cmd.start && cmd.end ? `\\int_{${valToTex(cmd.start)}}^{${valToTex(cmd.end)}} ${displayExpr} \\, d${cmd.variable}` : `\\int ${displayExpr} \\, d${cmd.variable}`;
-      case 'differentiate': return `\\frac{d}{d${cmd.variable}} \\left( ${displayExpr} \\right)`;
+      case 'integrate': 
+          const isDefinite = cmd.start != null && cmd.end != null;
+          return isDefinite ? `\\int_{${valToTex(cmd.start)}}^{${valToTex(cmd.end)}} ${displayExpr} \\, d${cmd.variable}` : `\\int ${displayExpr} \\, d${cmd.variable}`;
+      case 'diff':
+          return `\\frac{d}{d${cmd.variable}} \\left( ${displayExpr} \\right)`;
       case 'sum': return `\\sum_{${cmd.variable}=${valToTex(cmd.start)}}^{${valToTex(cmd.end)}} ${displayExpr}`;
       case 'determinant': return `\\det ${displayExpr}`;
       case 'invert': return `\\left( ${displayExpr} \\right)^{-1}`;
@@ -79,32 +95,32 @@ const constructLHSLatex = (cmd: MathCommand): string => {
   }
 };
 
-const toNerdamerVal = (val?: string) => {
-  if (!val) return '';
-  const v = val.toLowerCase();
+const toNerdamerVal = (val?: string | null) => {
+  if (val == null || val === '') return '';
+  const v = String(val).toLowerCase();
   if (v === 'inf' || v === 'infinity' || v === 'forever') return 'Infinity';
   if (v === 'pi') return 'PI';
   if (v === 'e') return 'E';
-  return val;
+  return String(val);
 };
 
-const toAlgebriteVal = (val?: string) => {
-  if (!val) return '';
-  const v = val.toLowerCase();
+const toAlgebriteVal = (val?: string | null) => {
+  if (val == null || val === '') return '';
+  const v = String(val).toLowerCase();
   if (v === 'infinity' || v === 'inf') return 'inf';
   if (v === 'pi') return 'pi'; 
-  return val;
+  return String(val);
 };
 
 const isUnresolved = (output: string, operation: string): boolean => {
   if (!output) return true;
   const out = output.replace(/\s/g, '').toLowerCase();
-  const op = operation.toLowerCase();
+  const op = getCanonicalOp(operation);
   const keywords: Record<string, string[]> = {
     'integrate': ['int(', 'integrate(', 'defint('],
     'sum': ['sum('],
     'limit': ['limit('],
-    'differentiate': ['diff(', 'd(', 'derivative('],
+    'diff': ['diff(', 'd(', 'derivative('],
     'solve': ['solve(', 'roots('],
     'determinant': ['det(', 'determinant('],
     'invert': ['inv(', 'invert(']
@@ -142,7 +158,6 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
             initialQueryHandled.current = true;
         }
         
-        // Check for deep link auto-run
         const params = new URLSearchParams(window.location.search);
         if (params.get('auto') === 'true' && !hasAutoRun.current) {
             hasAutoRun.current = true;
@@ -177,14 +192,6 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
     setDebugLog(prev => [...prev, logEntry]);
   };
 
-  const quickSanityCheck = (result: string): { isValid: boolean; reason?: string } => {
-    if (!result) return { isValid: false, reason: "Empty output" };
-    const errorKeywords = ["Stop", "nil", "cannot solve", "Division by zero", "Invalid argument", "parse error"];
-    for (const err of errorKeywords) if (result.includes(err)) return { isValid: false, reason: `Error keyword: ${err}` };
-    if (result === 'undefined' || result === 'null') return { isValid: false, reason: "Result is undefined/null" };
-    return { isValid: true };
-  };
-
   const handleSolve = async (e?: React.FormEvent, overrideQuery?: string) => {
     e?.preventDefault();
     const queryToUse = overrideQuery || input || initialQuery;
@@ -206,7 +213,10 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
       setParsedCommand(command);
       addLog(`✅ Parsed Command: ${JSON.stringify(command)}`);
 
-      const { operation, expression, variable = 'x', start, end } = command;
+      const { operation: rawOp, expression, variable = 'x', start, end } = command;
+      const operation = getCanonicalOp(rawOp);
+      addLog(`🧐 Canonical Operation: "${operation}"`);
+      
       let finalLatex = '';
       let engineName = '';
       let solved = false;
@@ -217,8 +227,13 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
         try {
             let nerdString = '';
             switch (operation) {
-              case 'integrate': nerdString = (start !== undefined && end !== undefined) ? `defint(${expression}, ${toNerdamerVal(start)}, ${toNerdamerVal(end)}, ${variable})` : `integrate(${expression}, ${variable})`; break;
-              case 'differentiate': nerdString = `diff(${expression}, ${variable})`; break;
+              case 'integrate': 
+                nerdString = (start != null && end != null) 
+                  ? `defint(${expression}, ${toNerdamerVal(start)}, ${toNerdamerVal(end)}, ${variable})` 
+                  : `integrate(${expression}, ${variable})`; 
+                break;
+              case 'diff':
+                nerdString = `diff(${expression}, ${variable})`; break;
               case 'solve': nerdString = (expression.includes(',') || expression.includes('=')) ? `solveEquations(${(expression.startsWith('[') || !expression.includes(',')) ? expression : `[${expression}]`})` : `solve(${expression}, ${variable})`; break;
               case 'sum': nerdString = `sum(${expression}, ${variable}, ${toNerdamerVal(start) || '0'}, ${toNerdamerVal(end) || '10'})`; break;
               case 'limit': nerdString = `limit(${expression}, ${variable}, ${toNerdamerVal(end) || 'Infinity'})`; break;
@@ -226,6 +241,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
               case 'determinant': nerdString = `determinant(${formatMatrixForNerdamer(expression)})`; break;
               case 'invert': nerdString = `invert(${formatMatrixForNerdamer(expression)})`; break;
               case 'taylor': nerdString = `taylor(${expression}, ${variable}, ${toNerdamerVal(end) || '4'}, ${toNerdamerVal(start) || '0'})`; break;
+              case 'simplify': nerdString = `simplify(${expression})`; break;
               default: nerdString = expression; break;
             }
             addLog(`⚙️ Nerdamer Execution: "${nerdString}"`);
@@ -244,8 +260,13 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
          try {
               let algString = '';
               switch (operation) {
-                case 'integrate': algString = (start !== undefined && end !== undefined) ? `defint(${expression},${variable},${toAlgebriteVal(start)},${toAlgebriteVal(end)})` : (variable === 'x' ? `integral(${expression})` : `integral(${expression},${variable})`); break;
-                case 'differentiate': algString = `d(${expression},${variable})`; break;
+                case 'integrate': 
+                  algString = (start != null && end != null) 
+                    ? `defint(${expression},${variable},${toAlgebriteVal(start)},${toAlgebriteVal(end)})` 
+                    : (variable === 'x' ? `integral(${expression})` : `integral(${expression},${variable})`); 
+                  break;
+                case 'diff':
+                  algString = `d(${expression},${variable})`; break;
                 case 'solve': algString = expression.includes(',') ? `roots(${expression})` : `roots(${expression},${variable})`; break;
                 case 'sum': algString = `sum(${expression},${variable},${toAlgebriteVal(start)},${toAlgebriteVal(end)})`; break;
                 case 'limit': algString = `limit(${expression},${variable},${toAlgebriteVal(end)})`; break;
@@ -253,6 +274,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
                 case 'determinant': algString = `det(${formatMatrixForAlgebrite(expression)})`; break;
                 case 'invert': algString = `inv(${formatMatrixForAlgebrite(expression)})`; break;
                 case 'taylor': algString = `taylor(${expression},${variable},${toAlgebriteVal(start) || '0'},${toAlgebriteVal(end) || '4'})`; break;
+                case 'simplify': algString = `simplify(${expression})`; break;
                 default: algString = expression;
               }
               addLog(`⚙️ Algebrite Execution: "${algString}"`);
@@ -266,7 +288,8 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
             } catch (e: any) { return null; }
       };
 
-      const pipeline = LOCAL_SUPPORTED_OPS.includes(operation) ? (command.preferredEngine === 'algebrite' ? [{name:'Algebrite', run:runAlgebrite}, {name:'Nerdamer', run:runNerdamer}] : [{name:'Nerdamer', run:runNerdamer}, {name:'Algebrite', run:runAlgebrite}]) : [];
+      const isLocalSupported = LOCAL_SUPPORTED_OPS.includes(rawOp.toLowerCase()) || LOCAL_SUPPORTED_OPS.includes(operation);
+      const pipeline = isLocalSupported ? (command.preferredEngine === 'algebrite' ? [{name:'Algebrite', run:runAlgebrite}, {name:'Nerdamer', run:runNerdamer}] : [{name:'Nerdamer', run:runNerdamer}, {name:'Algebrite', run:runAlgebrite}]) : [];
 
       for (const step of pipeline) {
           addLog(`🏃 Attempting engine: ${step.name}`);
@@ -275,6 +298,8 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
               const { latex } = output;
               addLog(`⚖️ AI Validation: Verifying local result...`);
               const verification = await validateMathResult(queryToUse, latex);
+              addLog(`🧐 Validation: ${verification.isValid ? 'ACCEPTED' : 'REJECTED'}${verification.reason ? ` (${verification.reason})` : ''}`);
+              
               if (verification.isValid) {
                   finalLatex = latex;
                   if (output.decimal) setDecimalResult(output.decimal);
@@ -286,21 +311,21 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
       }
 
       if (!solved) {
-         addLog(`🔮 Falling back to Gemini Pro AI...`);
+         addLog(`🔮 Falling back to Gemini AI for pure symbolic logic...`);
          const aiResult = await solveMathWithAI(queryToUse);
          if (aiResult) { 
              finalLatex = aiResult; 
-             setUsedEngine('Gemini Pro (AI)'); 
+             setUsedEngine('Gemini (AI Solver)'); 
              solved = true; 
          } else {
-             setError("Unable to solve query.");
+             setError("Unable to resolve equation.");
          }
       } else { 
           setUsedEngine(engineName); 
       }
 
       if (solved) {
-        setResultLatex(`$$ ${constructLHSLatex(command)} ${command.operation === 'solve' ? '\\implies' : '='} ${finalLatex.replace(/\\text{([^}]*)}/g, '$1').trim()} $$`);
+        setResultLatex(`$$ ${constructLHSLatex(command)} ${operation === 'solve' ? '\\implies' : '='} ${finalLatex.replace(/\\text{([^}]*)}/g, '$1').trim()} $$`);
       }
     } catch (err: any) { 
         setError(err.message || "An error occurred."); 
@@ -339,7 +364,7 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
             {resultLatex && !error && (
                 <div className="space-y-6 animate-fade-in-up">
                     <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-slate-800 rounded-xl p-6 shadow-md relative">
-                         {usedEngine && <div className="absolute top-3 right-3 flex items-center px-2 py-1 rounded-md bg-white/50 border border-indigo-100 text-[10px] font-semibold text-slate-500"><span className="mr-1.5">{usedEngine.includes('AI') ? '✨' : '✅'}</span>Solved by {usedEngine}</div>}
+                         {usedEngine && <div className="absolute top-4 right-4 flex items-center px-2 py-1 rounded-md bg-white/50 border border-indigo-100 text-[10px] font-semibold text-slate-500"><span className="mr-1.5">{usedEngine.includes('AI') ? '✨' : '✅'}</span>Solved by {usedEngine}</div>}
                         <h4 className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-3">Result</h4>
                         <div className="text-2xl sm:text-3xl text-slate-900 dark:text-slate-100 overflow-x-auto mb-3"><LatexRenderer content={resultLatex} /></div>
                         {decimalResult && <div className="flex items-center space-x-2 pt-3 border-t border-indigo-100 text-slate-500 text-sm font-mono">≈ {decimalResult}</div>}

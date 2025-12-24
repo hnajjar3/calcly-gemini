@@ -1,3 +1,4 @@
+
 # Calcly Architecture Documentation
 
 ## Abstract
@@ -74,21 +75,21 @@ Calcly's core innovation is how it handles mathematical queries to avoid LLM hal
 This component handles algebra, calculus, and symbolic manipulation.
 
 1.  **Natural Language Parsing (Cloud)**: 
-    *   The user's query (e.g., "Integrate x squared") is sent to Gemini Pro.
+    *   The user's query (e.g., "Integrate x squared") is sent to **Gemini 3 Flash** with a high **Thinking Budget**.
     *   The AI translates this into a standardized JSON Command: `{ operation: "integrate", expression: "x^2", variable: "x" }`.
 2.  **Execution Pipeline (Local)**:
     *   The system attempts to solve the standardized command using `Algebrite`.
     *   If `Algebrite` fails or returns an echo, it attempts `Nerdamer`.
 3.  **AI Verification (Closed Loop)**:
-    *   The local result is sent back to a lightweight Gemini model (Flash) acting as a "Judge".
+    *   The local result is sent back to **Gemini 3 Flash** acting as a "Judge".
     *   The Judge validates if the local result makes sense mathematically.
 4.  **Fallback**:
-    *   If local engines fail or the Judge rejects the result, the system falls back to Gemini Pro to solve the problem "by hand" (pure generative AI).
+    *   If local engines fail or the Judge rejects the result, the system falls back to **Gemini 3 Flash** (Thinking enabled) to solve the problem natively.
 
 ### 3.2 The Numerical Solver (`NumericalSolver.tsx`)
 This component handles arithmetic, statistics, and unit conversions.
 
-1.  **Input Parsing**: User input is parsed by Gemini into valid `math.js` syntax (e.g., "Avg of 1 and 2" -> `mean(1, 2)`).
+1.  **Input Parsing**: User input is parsed by **Gemini 3 Flash** into valid `math.js` syntax (e.g., "Avg of 1 and 2" -> `mean(1, 2)`).
 2.  **Custom Functions**: The engine injects custom implementations of `integrate` and `deriv` using numerical methods (Simpson's Rule, Central Difference) into the `math.js` scope.
 3.  **Execution**: The parsed string is evaluated safely in the browser.
 
@@ -100,11 +101,12 @@ Calcly uses specific Gemini models for specific tasks to balance cost, latency, 
 
 | Task | Model | Reason |
 | :--- | :--- | :--- |
-| **Parsing** | `gemini-3-pro-preview` | Superior reasoning for syntax translation and handling ambiguity. |
-| **General Solver (Pro)** | `gemini-3-pro-preview` | State-of-the-art complex problem solving with large 'Thinking' budget. |
-| **General Solver (Flash)** | `gemini-3-flash-preview` | Balanced performance with high speed and reliability. |
-| **Validation (Judge)** | `gemini-3-flash-preview` | Extremely fast and cost-effective for verification cycles. |
-| **Voice/Audio** | `gemini-3-pro-preview` | High-fidelity multimodal processing of audio and visual inputs. |
+| **Parsing** | `gemini-3-flash-preview` | Enhanced with **Thinking Budget** for rapid, robust syntax translation. |
+| **General Solver (Pro)** | `gemini-3-pro-preview` | Maximum intelligence for complex reasoning tasks. |
+| **General Solver (Flash)** | `gemini-3-flash-preview` | Optimized for low-latency standard solving without sacrificing reasoning. |
+| **Specialized Math AI** | `gemini-3-flash-preview` | Fast, dedicated solvers for symbolic fallback and step-by-step explanations. |
+| **Validation (Judge)** | `gemini-3-flash-preview` | High-speed verification with reasoning to prevent hallucinated results. |
+| **Voice/Audio** | `gemini-3-pro-preview` | Multimodal high-fidelity processing of audio and visual inputs. |
 
 ---
 
@@ -151,11 +153,5 @@ Calcly supports powerful URL-based interactions, allowing external apps or sites
 #### Numerical Analysis Link
 `https://app.calcly.ai/?tool=numerical&q=Standard+deviation+of+[10,20,30,40,50]&auto=true`
 *   **Result**: Opens the **Numerical Solver** modal, pre-fills the data set, and calculates the result using the Math.js engine.
-
-### 7.3 Integration Logic
-The `App.tsx` entry point utilizes a React `useEffect` hook to parse `window.location.search`.
-1.  It checks for `tool`. If matched, it sets the corresponding modal visibility state (`showSymbolicSolver` or `showNumericalSolver`).
-2.  If `q` is present, it passes the value as an `initialQuery` prop to the modal or sets the main input state.
-3.  If `auto=true`, it calls the respective internal submission handler (`handleSolve` or `handleSubmit`).
 
 ---
