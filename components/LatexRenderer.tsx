@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 declare const katex: any;
@@ -13,6 +12,48 @@ export interface LatexToken {
   type: 'text' | 'block' | 'inline';
   content: string;
 }
+
+/**
+ * Robustly converts string representations of matrices like [[1,2],[3,4]] 
+ * into LaTeX bmatrix notation.
+ */
+export const formatMatrixToLatex = (str: string): string => {
+  if (typeof str !== 'string' || !str.trim()) return str;
+  const trimmed = str.trim();
+  
+  // Detect nested array structure: [[...], [...]]
+  if (/^\[\s*\[[\s\S]*\]\s*\]$/.test(trimmed)) {
+    try {
+      // Remove outer brackets
+      const inner = trimmed.slice(1, -1).trim();
+      // Match individual rows: [a, b, c]
+      const rows = inner.match(/\[[\s\S]*?\]/g);
+      
+      if (rows && rows.length > 0) {
+        const latexRows = rows.map(row => {
+          // Remove row brackets
+          const content = row.slice(1, -1).trim();
+          // Split by comma, but be careful with nested commas (though rare in simple matrices)
+          return content.split(',').map(val => {
+            let cleaned = val.trim();
+            // Basic cleanup for Nerdamer/Algebrite output quirks
+            cleaned = cleaned.replace(/\*/g, '');
+            // Convert fractions to better looking decimals or stay symbolic
+            if (/^-?\d+\/\d+$/.test(cleaned)) {
+              const [n, d] = cleaned.split('/').map(Number);
+              if (d !== 0 && Math.abs(n/d) < 1000) return parseFloat((n / d).toFixed(4)).toString();
+            }
+            return cleaned;
+          }).join(' & ');
+        });
+        return `\\begin{bmatrix} ${latexRows.join(' \\\\ ')} \\end{bmatrix}`;
+      }
+    } catch (e) {
+      console.warn("Matrix formatting failed, falling back to raw string", e);
+    }
+  }
+  return str;
+};
 
 // Robust manual tokenizer to avoid Regex Lookbehind issues on older iOS/Safari
 export const splitLatex = (text: string): LatexToken[] => {
@@ -44,8 +85,6 @@ export const splitLatex = (text: string): LatexToken[] => {
         i = j + 2;
         lastIndex = i;
         continue;
-      } else {
-        // No closing tag found, continue searching as text
       }
     }
 
@@ -61,11 +100,6 @@ export const splitLatex = (text: string): LatexToken[] => {
        let foundEnd = false;
        while (j < text.length) {
          if (text[j] === '$' && text[j - 1] !== '\\') {
-            // Condition: Not preceded by space (Latex convention, optional but good for robustness)
-            if (/\s/.test(text[j-1])) {
-               j++;
-               continue;
-            }
             foundEnd = true;
             break;
          }
@@ -73,7 +107,6 @@ export const splitLatex = (text: string): LatexToken[] => {
        }
 
        if (foundEnd) {
-         // Flush preceding text only when we confirm we found math
          if (i > lastIndex) {
             tokens.push({ type: 'text', content: text.slice(lastIndex, i) });
          }
@@ -88,7 +121,6 @@ export const splitLatex = (text: string): LatexToken[] => {
     i++;
   }
   
-  // Flush remaining text
   if (lastIndex < text.length) {
     tokens.push({ type: 'text', content: text.slice(lastIndex) });
   }
@@ -105,29 +137,24 @@ export const LatexRenderer: React.FC<Props> = ({ content, className = '', render
   return (
     <span className={className}>
       {parts.map((part, index) => {
-        if (part.type === 'block') {
+        if (part.type === 'block' || part.type === 'inline') {
+          const displayMode = part.type === 'block';
+          // Pre-process LaTeX content for matrix notation if it contains [[
+          const processedContent = part.content.includes('[[') ? formatMatrixToLatex(part.content) : part.content;
+          
           try {
-            const html = katex.renderToString(part.content, { displayMode: true, throwOnError: false });
+            const html = katex.renderToString(processedContent, { displayMode, throwOnError: false });
             return <span key={index} dangerouslySetInnerHTML={{ __html: html }} />;
           } catch (e) {
-            return <span key={index}>{`$$${part.content}$$`}</span>;
-          }
-        } else if (part.type === 'inline') {
-          try {
-            const html = katex.renderToString(part.content, { displayMode: false, throwOnError: false });
-            return <span key={index} dangerouslySetInnerHTML={{ __html: html }} />;
-          } catch (e) {
-            return <span key={index}>{`$${part.content}$`}</span>;
+            return <span key={index}>{displayMode ? `$$${part.content}$$` : `$${part.content}$`}</span>;
           }
         } else {
-          // Regular Text or Markdown
           if (!part.content) return null;
 
           if (renderMarkdown) {
               const markedLib = (window as any).marked;
               if (markedLib) {
                   try {
-                      // parseInline is important to avoid wrapping in <p> tags for table cells
                       const html = markedLib.parseInline(part.content, { breaks: true, gfm: true });
                       return <span key={index} dangerouslySetInnerHTML={{ __html: html }} />;
                   } catch (e) {

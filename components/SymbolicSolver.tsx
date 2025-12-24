@@ -1,9 +1,8 @@
-
 // Add missing React import
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Sigma, Play, RefreshCw, AlertTriangle, Terminal, ExternalLink } from '../components/icons';
 import { parseMathCommand, MathCommand, solveMathWithAI, validateMathResult } from '../services/geminiService';
-import { LatexRenderer } from './LatexRenderer';
+import { LatexRenderer, formatMatrixToLatex } from './LatexRenderer';
 
 declare const nerdamer: any;
 
@@ -29,35 +28,6 @@ const formatMatrixForNerdamer = (expr: string): string => {
 };
 
 const formatMatrixForAlgebrite = (expr: string): string => typeof expr !== 'string' ? String(expr || '') : expr.replace(/\s/g, '');
-
-const formatMatrixToLatex = (str: string): string => {
-  if (typeof str !== 'string') return '';
-  if (/^\[\s*\[[\s\S]*\]\s*\]$/.test(str)) {
-    try {
-      const inner = str.trim().slice(1, -1);
-      const rows = inner.match(/\[.*?\]/g);
-      if (rows && rows.length > 0) {
-        const latexRows = rows.map(row => {
-          const content = row.slice(1, -1);
-          return content.split(',').map(val => {
-              const cleaned = val.trim().replace(/\*/g, '');
-              if (/^-?\d+\/\d+$/.test(cleaned)) {
-                  const [n, d] = cleaned.split('/').map(Number);
-                  if (d !== 0) return parseFloat((n / d).toFixed(4)).toString();
-              }
-              try {
-                 const f = parseFloat(cleaned);
-                 if (!isNaN(f) && cleaned.includes('.')) return parseFloat(f.toFixed(4)).toString();
-              } catch(e) {}
-              return cleaned;
-          }).join(' & ');
-        });
-        return `\\begin{bmatrix} ${latexRows.join(' \\\\ ')} \\end{bmatrix}`;
-      }
-    } catch (e) {}
-  }
-  return str;
-};
 
 // Canonicalize AI tokens to Library Tokens
 const getCanonicalOp = (op: string): string => {
@@ -137,7 +107,6 @@ interface Props {
   onClose: () => void;
 }
 
-// Fixed: React.FC requires React namespace to be available
 export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose }) => {
   const [input, setInput] = useState('');
   const [parsedCommand, setParsedCommand] = useState<MathCommand | null>(null);
@@ -165,7 +134,6 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
             hasAutoRun.current = true;
             const queryToSolve = initialQuery || params.get('q');
             if (queryToSolve) {
-                console.log("[SymbolicSolver] Triggering auto-solve for deep link");
                 setTimeout(() => handleSolve(undefined, queryToSolve), 500);
             }
         }
@@ -194,7 +162,6 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
     setDebugLog(prev => [...prev, logEntry]);
   };
 
-  // Fixed: React.FormEvent requires React namespace to be available
   const handleSolve = async (e?: React.FormEvent, overrideQuery?: string) => {
     e?.preventDefault();
     const queryToUse = overrideQuery || input || initialQuery;
@@ -290,7 +257,16 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
               if (isUnresolved(res, operation)) return null;
               let dec = ''; try { dec = AlgebriteEngine.run(`float(${res})`); } catch(e) {}
               let latex = '';
-              try { latex = getNerdamer()(res).toTeX(); } catch(e) { latex = res.replace(/\*/g, ''); }
+              try { 
+                // Attempt to convert Algebrite matrix string to Nerdamer/LaTeX
+                if (res.includes('[[')) {
+                  latex = formatMatrixToLatex(res);
+                } else {
+                  latex = getNerdamer()(res).toTeX(); 
+                }
+              } catch(e) { 
+                latex = res.replace(/\*/g, ''); 
+              }
               return { latex, decimal: dec };
             } catch (e: any) { return null; }
       };
@@ -332,7 +308,9 @@ export const SymbolicSolver: React.FC<Props> = ({ isOpen, initialQuery, onClose 
       }
 
       if (solved) {
-        setResultLatex(`$$ ${constructLHSLatex(command)} ${operation === 'solve' ? '\\implies' : '='} ${finalLatex.replace(/\\text{([^}]*)}/g, '$1').trim()} $$`);
+        // Ensure the finalLatex is processed for matrix formatting if it's still raw nested arrays
+        const displayResult = finalLatex.includes('[[') ? formatMatrixToLatex(finalLatex) : finalLatex.replace(/\\text{([^}]*)}/g, '$1').trim();
+        setResultLatex(`$$ ${constructLHSLatex(command)} ${operation === 'solve' ? '\\implies' : '='} ${displayResult} $$`);
       }
     } catch (err: any) { 
         setError(err.message || "An error occurred."); 
