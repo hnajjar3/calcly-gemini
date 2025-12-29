@@ -234,14 +234,14 @@ const App: React.FC = () => {
 
         {/* Right Actions */}
         <div className="flex items-center gap-2">
-          <button
+          {/* <button
             onClick={handlePublish}
             disabled={isPublishing}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold uppercase tracking-wide mr-2 ${isPublishing ? 'bg-slate-700 text-slate-500' : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'}`}
             title="Generate Scientific Report"
           >
             <Printer className="w-4 h-4" /> {isPublishing ? 'Publishing...' : 'Publish Report'}
-          </button>
+          </button> */}
 
           <div className="w-px h-6 bg-slate-700 mx-1"></div>
 
@@ -304,12 +304,12 @@ const App: React.FC = () => {
                     >
                       <Grid className="w-4 h-4" /> Plots {plots.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-pink-500/20 text-pink-400 rounded-full text-[10px]">{plots.length}</span>}
                     </button>
-                    <button
+                    {/* <button
                       onClick={() => setActiveMainTab('report')}
                       className={`px-6 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeMainTab === 'report' ? 'bg-slate-900 text-emerald-400 border-t-2 border-t-emerald-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
                     >
                       <BookOpen className="w-4 h-4" /> Document
-                    </button>
+                    </button> */}
                   </div>
 
                   {/* Content */}
@@ -324,9 +324,9 @@ const App: React.FC = () => {
                     <div className={`absolute inset-0 ${activeMainTab === 'plots' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
                       <PlotViewer plots={plots} theme={theme} />
                     </div>
-                    <div className={`absolute inset-0 ${activeMainTab === 'report' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
+                    {/* <div className={`absolute inset-0 ${activeMainTab === 'report' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
                       <ReportViewer markdown={reportMarkdown} />
-                    </div>
+                    </div> */}
                   </div>
                 </div>
               </Panel>
