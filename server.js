@@ -29,10 +29,19 @@ app.use('/api-proxy', createProxyMiddleware({
       console.warn('[Proxy] WARN: GEMINI_API_KEY is missing in server environment variables!');
     }
 
-    // Server-side Injection: Inject via Header (preferred by Gemini SDK)
-    // This overwrites any key sent by the client (e.g. empty string)
+    // Server-side Injection: Inject via Header AND Query Param (Fail-safe)
+    // Some Google APIs strictly require one or the other; doing both covers all bases.
     if (GEMINI_API_KEY) {
+      // 1. Header Injection
       proxyReq.setHeader('x-goog-api-key', GEMINI_API_KEY);
+
+      // 2. Query Param Injection
+      // We must be careful not to break the path. 
+      // Note: proxyReq.path here is the path sent to the target, including query string.
+      const separator = proxyReq.path.includes('?') ? '&' : '?';
+      proxyReq.path = proxyReq.path + separator + 'key=' + GEMINI_API_KEY;
+
+      console.log('[Proxy] Injected API Key via Header and Query Param.');
     }
   }
 }));
