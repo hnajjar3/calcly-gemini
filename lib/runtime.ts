@@ -193,17 +193,32 @@ class Runtime {
         win.plot = plot;
         win.print = (...args: any[]) => safeLog('log', ...args);
 
+        const processedCode = this.preprocessCode(code);
+
         try {
             // Use script tag injection to ensure let/const persist in global lexical scope
             const doc = this.iframe!.contentDocument!;
             const script = doc.createElement('script');
-            script.textContent = code;
+            script.textContent = processedCode;
             doc.body.appendChild(script);
 
-            this.harvestVariables(win, code);
+            this.harvestVariables(win, processedCode);
         } catch (e: any) {
             safeLog('error', e.toString());
         }
+    }
+
+    private preprocessCode(code: string): string {
+        // 1. Convert class declarations to var expressions to allow redeclaration
+        // class Foo {} -> var Foo = class Foo {}
+        code = code.replace(/class\s+([a-zA-Z_$][\w$]*)/g, 'var $1 = class $1');
+
+        // 2. Convert const/let to var to allow redeclaration, EXCEPT in for-loops
+        // We want to preserve 'for (let i...' because that creates necessary closure scopes
+        return code.replace(/(for\s*\(\s*let\b)|(\b(const|let)\b)/g, (_match, forGroup, _varGroup) => {
+            if (forGroup) return forGroup; // Keep 'for (let' as is
+            return 'var'; // Replace other const/let with var
+        });
     }
 
     private harvestVariables(win: any, code: string) {
