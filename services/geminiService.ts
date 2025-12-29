@@ -17,8 +17,18 @@ const extractJSON = (raw: string): string => {
   return text;
 };
 
+// Helper to safely get API key at runtime, bypassing Vite's build-time replacement if needed
+const getApiKey = (): string => {
+  // Check global window injection first (Production Server)
+  if (typeof window !== 'undefined' && (window as any).GEMINI_API_KEY) {
+    return (window as any).GEMINI_API_KEY;
+  }
+  // Check process.env (Local Dev / Build time)
+  return process.env.GEMINI_API_KEY || process.env.API_KEY || '';
+};
+
 export const generateCodeFromPrompt = async (query: string, previousCode?: string, mathMode: 'numerical' | 'symbolic' | 'auto' = 'auto'): Promise<CodeGenerationResponse> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
   const parts: any[] = [];
   if (previousCode) {
     parts.push({ text: `Current Code:\n\`\`\`javascript\n${previousCode}\n\`\`\`` });
@@ -90,7 +100,7 @@ export const generateCodeFromPrompt = async (query: string, previousCode?: strin
 };
 
 export const reviewCode = async (code: string, userMessage: string, mathMode: 'numerical' | 'symbolic' | 'auto'): Promise<{ message: string; fixedCode?: string }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
   const parts: any[] = [
     { text: `Current Code:\n\`\`\`javascript\n${code}\n\`\`\`` },
     { text: `User Message: "${userMessage}"` },
@@ -136,7 +146,7 @@ export const reviewCode = async (code: string, userMessage: string, mathMode: 'n
 };
 
 export const generateReport = async (code: string, logs: string, variables: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
   const parts: any[] = [
     { text: `Script Code:\n\`\`\`javascript\n${code}\n\`\`\`` },
     { text: `Execution Logs:\n${logs}` },

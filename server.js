@@ -28,9 +28,13 @@ app.get('*', (req, res) => {
     // Support both GEMINI_API_KEY (specific) and API_KEY (generic)
     const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || '';
 
-    // Inject directly into the pre-defined process shim in index.html
-    // We assume window.process.env already exists from index.html's base script
-    const envScript = `<script>if (window.process && window.process.env) { window.process.env.API_KEY = "${apiKey}"; }</script>`;
+    // Inject directly as a window global to avoid Vite build-time replacement issues with process.env
+    const envScript = `<script>
+      window.GEMINI_API_KEY = "${apiKey}"; 
+      if (!window.process) window.process = { env: {} };
+      window.process.env.API_KEY = "${apiKey}";
+      window.process.env.GEMINI_API_KEY = "${apiKey}";
+    </script>`;
     const injectedHtml = htmlData.replace('<!--ENV_INJECTION-->', envScript);
 
     res.send(injectedHtml);
