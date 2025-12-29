@@ -23,10 +23,12 @@ import { ChatSidebar } from './components/ChatSidebar';
 import { runtime, LogEntry, Variable, PlotData } from './lib/runtime';
 import { reviewCode, generateReport } from './services/geminiService';
 
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
+
 const APP_NAME = "Calcly IDE";
 
 const App: React.FC = () => {
-  // State
+  // ... existing ...
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [code, setCode] = useState<string>('// Welcome to Calcly IDE\n// Ask the AI to write code or type it here.\n// Example: "Solve x^2 - x - 1 = 0"\n\nconst x = [];\nconst y = [];\nfor (let i = 0; i < 100; i++) {\n  x.push(i / 10);\n  y.push(Math.sin(i / 10) * Math.exp(-i/50));\n}\n\nplot([{x, y, type: "scatter", mode: "lines"}], {title: "Damped Sine Wave"});\n');
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -224,79 +226,100 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Layout */}
+      {/* Resizable Layout */}
       <div className="flex-grow flex overflow-hidden">
+        <PanelGroup orientation="horizontal" style={{ height: '100%', width: '100%' }}>
 
-        {/* Left Panel: Chat Sidebar */}
-        <ChatSidebar
-          messages={chatMessages}
-          onSendMessage={handleChatSubmit}
-          onReviewCode={handleReviewClick}
-          isProcessing={isAiProcessing}
-        />
-
-        {/* Middle Panel: Editor/Plots Tabs + Command Window */}
-        <div className="flex-grow flex flex-col min-w-0 border-l border-r border-slate-700">
-
-          {/* Tabs for Main Panel */}
-          <div className="flex bg-slate-800 border-b border-slate-700">
-            <button
-              onClick={() => setActiveMainTab('editor')}
-              className={`px-6 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeMainTab === 'editor' ? 'bg-slate-900 text-indigo-400 border-t-2 border-t-indigo-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
-            >
-              <FileCode className="w-4 h-4" /> Script Editor
-            </button>
-            <button
-              onClick={() => setActiveMainTab('plots')}
-              className={`px-6 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeMainTab === 'plots' ? 'bg-slate-900 text-pink-400 border-t-2 border-t-pink-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
-            >
-              <Grid className="w-4 h-4" /> Plots {plots.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-pink-500/20 text-pink-400 rounded-full text-[10px]">{plots.length}</span>}
-            </button>
-            <button
-              onClick={() => setActiveMainTab('report')}
-              className={`px-6 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeMainTab === 'report' ? 'bg-slate-900 text-emerald-400 border-t-2 border-t-emerald-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
-            >
-              <BookOpen className="w-4 h-4" /> Document
-            </button>
-          </div>
-
-          {/* Main Content Area */}
-          <div className="flex-grow relative h-2/3 min-h-[300px] bg-[#1e1e1e]">
-            <div className={`absolute inset-0 ${activeMainTab === 'editor' ? 'z-10' : 'z-0 invisible'}`}>
-              <CodeEditor
-                code={code}
-                onChange={(val) => setCode(val || '')}
-                onRun={handleRunCode}
-              />
-            </div>
-            <div className={`absolute inset-0 ${activeMainTab === 'plots' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
-              <PlotViewer plots={plots} theme={theme} />
-            </div>
-            <div className={`absolute inset-0 ${activeMainTab === 'report' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
-              <ReportViewer markdown={reportMarkdown} />
-            </div>
-          </div>
-
-          {/* Command Window */}
-          <div className="h-1/3 min-h-[150px] border-t border-slate-700 flex flex-col bg-slate-900">
-            <CommandWindow logs={logs} onExecute={handleCommand} />
-          </div>
-        </div>
-
-        {/* Right Panel: Workspace Only */}
-        <div className="w-[300px] shrink-0 bg-slate-800 flex flex-col shadow-xl z-20">
-          <div className="px-4 py-3 border-b border-slate-700 bg-slate-800 flex items-center gap-2">
-            <Terminal className="w-4 h-4 text-emerald-400" />
-            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Workspace</span>
-          </div>
-          <div className="flex-grow overflow-hidden relative bg-slate-900">
-            <WorkspaceViewer
-              variables={variables}
-              onClear={handleClearWorkspace}
-              onDeleteVariable={handleDeleteVariable}
+          {/* Left Panel: Chat Sidebar */}
+          <Panel defaultSize={20} minSize={15} className="flex flex-col">
+            <ChatSidebar
+              messages={chatMessages}
+              onSendMessage={handleChatSubmit}
+              onReviewCode={handleReviewClick}
+              isProcessing={isAiProcessing}
             />
-          </div>
-        </div>
+          </Panel>
+
+          <PanelResizeHandle className="w-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-col-resize z-50" />
+
+          {/* Middle Panel: Main Content */}
+          <Panel defaultSize={60} minSize={30}>
+            <PanelGroup orientation="vertical" style={{ height: '100%', width: '100%' }}>
+
+              {/* Top: Editor/Plots/Report */}
+              <Panel defaultSize={75} minSize={30}>
+                <div className="h-full flex flex-col min-w-0 bg-slate-900 border-r border-slate-700">
+                  {/* Tabs */}
+                  <div className="flex bg-slate-800 border-b border-slate-700 flex-shrink-0">
+                    <button
+                      onClick={() => setActiveMainTab('editor')}
+                      className={`px-6 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeMainTab === 'editor' ? 'bg-slate-900 text-indigo-400 border-t-2 border-t-indigo-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
+                    >
+                      <FileCode className="w-4 h-4" /> Script Editor
+                    </button>
+                    <button
+                      onClick={() => setActiveMainTab('plots')}
+                      className={`px-6 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeMainTab === 'plots' ? 'bg-slate-900 text-pink-400 border-t-2 border-t-pink-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
+                    >
+                      <Grid className="w-4 h-4" /> Plots {plots.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-pink-500/20 text-pink-400 rounded-full text-[10px]">{plots.length}</span>}
+                    </button>
+                    <button
+                      onClick={() => setActiveMainTab('report')}
+                      className={`px-6 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeMainTab === 'report' ? 'bg-slate-900 text-emerald-400 border-t-2 border-t-emerald-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
+                    >
+                      <BookOpen className="w-4 h-4" /> Document
+                    </button>
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-grow relative bg-[#1e1e1e]">
+                    <div className={`absolute inset-0 ${activeMainTab === 'editor' ? 'z-10' : 'z-0 invisible'}`}>
+                      <CodeEditor
+                        code={code}
+                        onChange={(val) => setCode(val || '')}
+                        onRun={handleRunCode}
+                      />
+                    </div>
+                    <div className={`absolute inset-0 ${activeMainTab === 'plots' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
+                      <PlotViewer plots={plots} theme={theme} />
+                    </div>
+                    <div className={`absolute inset-0 ${activeMainTab === 'report' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
+                      <ReportViewer markdown={reportMarkdown} />
+                    </div>
+                  </div>
+                </div>
+              </Panel>
+
+              <PanelResizeHandle className="h-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-row-resize z-50" />
+
+              {/* Bottom: Command Window */}
+              <Panel defaultSize={25} minSize={10} className="bg-slate-900">
+                <CommandWindow logs={logs} onExecute={handleCommand} />
+              </Panel>
+
+            </PanelGroup>
+          </Panel>
+
+          <PanelResizeHandle className="w-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-col-resize z-50" />
+
+          {/* Right Panel: Workspace */}
+          <Panel defaultSize={20} minSize={15} className="flex flex-col bg-slate-800 shadow-xl z-20">
+            <div className="h-full flex flex-col">
+              <div className="px-4 py-3 border-b border-slate-700 bg-slate-800 flex items-center gap-2 flex-shrink-0">
+                <Terminal className="w-4 h-4 text-emerald-400" />
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Workspace</span>
+              </div>
+              <div className="flex-grow overflow-hidden relative bg-slate-900">
+                <WorkspaceViewer
+                  variables={variables}
+                  onClear={handleClearWorkspace}
+                  onDeleteVariable={handleDeleteVariable}
+                />
+              </div>
+            </div>
+          </Panel>
+
+        </PanelGroup>
       </div>
     </div>
   );
