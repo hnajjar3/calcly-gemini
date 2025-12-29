@@ -132,6 +132,20 @@ const App: React.FC = () => {
     }
   };
 
+  // Auto-execute chat from URL parameter (e.g. ?chat_query=Solve+this)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const query = params.get('chat_query');
+    if (query) {
+      // Clear the param to prevent re-submission on refresh
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+
+      // Delay slightly to ensure app is fully ready
+      setTimeout(() => handleChatSubmit(query), 500);
+    }
+  }, []);
+
 
   const handleReviewClick = () => {
     handleChatSubmit("Please review the current code. Check for errors, bugs, or improvements, and fix them if necessary.");

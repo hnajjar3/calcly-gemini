@@ -102,5 +102,19 @@ Calcly uses a robust injection strategy to support "Build Once, Deploy Anywhere"
     -   `mathlive` (UI)
     -   `plotly.js` (Visualization)
 
+## 🔗 External Integrations
+
+### Auto-Start Query URL
+You can trigger the AI Copilot automatically by passing a query parameter to the application URL. This allows external tools or shortcuts to open Calcly and immediately start solving a problem.
+
+**URL Pattern:**
+`https://app.calcly.ai/?chat_query=YOUR_QUERY_HERE`
+
+**Example:**
+[Open Calcly and Solve PI](https://app.calcly.ai/?chat_query=Write+a+program+to+calculate+pi+using+Monte+Carlo)
+
+*Note: The URL parameter is automatically cleared from the address bar after the request is submitted to prevent re-submission on page reload.*
+
+## 🛠️ Architecture Overview
 ## License
 MIT
