@@ -6,9 +6,23 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import { createProxyMiddleware } from 'http-proxy-middleware';
+
 const app = express();
 // Cloud Run expects the app to listen on 0.0.0.0, not localhost
 const PORT = process.env.PORT || 8080;
+
+// Proxy /api-proxy requests to Google Gemini API
+app.use('/api-proxy', createProxyMiddleware({
+  target: 'https://generativelanguage.googleapis.com',
+  changeOrigin: true,
+  pathRewrite: {
+    '^/api-proxy': '' // Remove /api-proxy prefix when forwarding
+  },
+  onProxyReq: (proxyReq, req, res) => {
+    // Optional: Add logging or header manipulation if needed
+  }
+}));
 
 // Serve static files from the build directory
 // We explicitly exclude index.html from static serving so we can intercept and inject env vars

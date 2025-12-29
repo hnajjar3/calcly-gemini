@@ -20,6 +20,7 @@
     "algebrite": "^1.4.0",
     "chart.js": "^4.4.1",
     "express": "^4.18.2",
+    "http-proxy-middleware": "^3.0.5",
     "katex": "^0.16.27",
     "lucide-react": "^0.344.0",
     "mathjs": "^15.1.0",
