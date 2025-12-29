@@ -12,6 +12,9 @@ const app = express();
 // Cloud Run expects the app to listen on 0.0.0.0, not localhost
 const PORT = process.env.PORT || 8080;
 
+// Retrieve the API Key for server-side injection
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.API_KEY || '';
+
 // Proxy /api-proxy requests to Google Gemini API
 app.use('/api-proxy', createProxyMiddleware({
   target: 'https://generativelanguage.googleapis.com',
@@ -20,7 +23,14 @@ app.use('/api-proxy', createProxyMiddleware({
     '^/api-proxy': '' // Remove /api-proxy prefix when forwarding
   },
   onProxyReq: (proxyReq, req, res) => {
-    // Optional: Add logging or header manipulation if needed
+    // Server-side Injection: Append the API Key to the upstream request query parameters
+    // This ensures authentication works even if the client-side injection fails on custom domains
+    if (GEMINI_API_KEY) {
+      // Check if the path already has query parameters
+      const separator = proxyReq.path.includes('?') ? '&' : '?';
+      // Append the key parameter (Google API expects 'key')
+      proxyReq.path = proxyReq.path + separator + 'key=' + GEMINI_API_KEY;
+    }
   }
 }));
 
