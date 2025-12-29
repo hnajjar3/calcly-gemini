@@ -23,13 +23,16 @@ app.use('/api-proxy', createProxyMiddleware({
     '^/api-proxy': '' // Remove /api-proxy prefix when forwarding
   },
   onProxyReq: (proxyReq, req, res) => {
-    // Server-side Injection: Append the API Key to the upstream request query parameters
-    // This ensures authentication works even if the client-side injection fails on custom domains
+    // Debug Logging: Verify if the key exists in the environment
+    console.log(`[Proxy] Forwarding request: ${req.method} ${req.url}`);
+    if (!GEMINI_API_KEY) {
+      console.warn('[Proxy] WARN: GEMINI_API_KEY is missing in server environment variables!');
+    }
+
+    // Server-side Injection: Inject via Header (preferred by Gemini SDK)
+    // This overwrites any key sent by the client (e.g. empty string)
     if (GEMINI_API_KEY) {
-      // Check if the path already has query parameters
-      const separator = proxyReq.path.includes('?') ? '&' : '?';
-      // Append the key parameter (Google API expects 'key')
-      proxyReq.path = proxyReq.path + separator + 'key=' + GEMINI_API_KEY;
+      proxyReq.setHeader('x-goog-api-key', GEMINI_API_KEY);
     }
   }
 }));
