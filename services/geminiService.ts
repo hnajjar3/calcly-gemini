@@ -1,20 +1,5 @@
-import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
-import { SolverResponse, ModelMode } from "../types";
-
-export interface MathCommand {
-  operation: string;
-  expression: string;
-  variable?: string;
-  start?: string;
-  end?: string;
-  preferredEngine?: 'nerdamer' | 'algebrite' | 'gemini';
-  complexityClass: 'standard' | 'abstract' | 'impossible_locally';
-}
-
-export interface NumericalCommand {
-  expression: string;
-  solvableLocally: boolean;
-}
+import { GoogleGenAI, Type } from "@google/genai";
+import { CodeGenerationResponse } from "../types";
 
 // Helper: Extract JSON from potentially messy model output
 const extractJSON = (raw: string): string => {
@@ -31,82 +16,6 @@ const extractJSON = (raw: string): string => {
   }
   return text;
 };
-
-// Centralized Error Handler
-const handleGeminiError = (error: any): never => {
-  console.error("Gemini API Error details:", error);
-  let msg = error.message || error.toString();
-
-  const lowerMsg = msg.toLowerCase();
-  if (lowerMsg.includes('429') || lowerMsg.includes('quota')) throw new Error("⚠️ API Quota Exceeded.");
-  if (lowerMsg.includes('api_key') || lowerMsg.includes('403')) throw new Error("⚠️ Invalid API Key.");
-  if (lowerMsg.includes('503') || lowerMsg.includes('overloaded')) throw new Error("⚠️ AI Service Overloaded.");
-  if (lowerMsg.includes('timed out')) throw new Error("⚠️ Request Timed Out.");
-
-  throw new Error(msg || "An unexpected error occurred.");
-};
-
-const solverResponseSchema = {
-  type: Type.OBJECT,
-  properties: {
-    interpretation: { type: Type.STRING, description: "Concise restatement of query" },
-    result: {
-      type: Type.ARRAY,
-      description: "The answer broken down into parts. You can mix text and math.",
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          type: { type: Type.STRING },
-          content: { type: Type.STRING }
-        },
-        required: ["type", "content"]
-      }
-    },
-    confidenceScore: { type: Type.NUMBER },
-    sections: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          title: { type: Type.STRING },
-          type: { type: Type.STRING },
-          content: { type: Type.STRING },
-          tableData: {
-            type: Type.OBJECT,
-            properties: {
-              headers: { type: Type.ARRAY, items: { type: Type.STRING } },
-              rows: { type: Type.ARRAY, items: { type: Type.ARRAY, items: { type: Type.STRING } } }
-            }
-          }
-        }
-      }
-    },
-    chart: {
-      type: Type.OBJECT,
-      properties: {
-        type: { type: Type.STRING },
-        title: { type: Type.STRING },
-        labels: { type: Type.ARRAY, items: { type: Type.STRING } },
-        datasets: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              label: { type: Type.STRING },
-              data: { type: Type.ARRAY, items: { type: Type.NUMBER } }
-            },
-            required: ["label", "data"]
-          }
-        }
-      },
-      required: ["type", "datasets"]
-    },
-    suggestions: { type: Type.ARRAY, items: { type: Type.STRING } }
-  },
-  required: ["interpretation", "result", "sections"]
-};
-
-// ... (attemptGenerate and other helper functions remain the same if not used by generateCodeFromPrompt) ...
 
 export const generateCodeFromPrompt = async (query: string, previousCode?: string, mathMode: 'numerical' | 'symbolic' | 'auto' = 'auto'): Promise<CodeGenerationResponse> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -224,4 +133,41 @@ export const reviewCode = async (code: string, userMessage: string, mathMode: 'n
   const raw = response.text || "{}";
   const cleaned = extractJSON(raw);
   return JSON.parse(cleaned);
+};
+
+export const generateReport = async (code: string, logs: string, variables: string): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const parts: any[] = [
+    { text: `Script Code:\n\`\`\`javascript\n${code}\n\`\`\`` },
+    { text: `Execution Logs:\n${logs}` },
+    { text: `Workspace Variables:\n${variables}` },
+    { text: "Task: Generate a professional scientific report based on this analysis." }
+  ];
+
+  const systemInstruction = `You are a Scientific Publisher.
+            Convert the provided code execution data into a professional "document-style" report.
+            
+            Structure:
+            1. **Title & Introduction**: Infer the goal from the code comments and variable names.
+            2. **Methodology**: Explain the math/algorithm used (use LaTeX for math, e.g., $x^2$).
+            3. **Results**: Present the calculated values and findings.
+            4. **Conclusion**: Summarize.
+
+            Formatting:
+            - Use standard Markdown.
+            - Use single '$' for inline math: $f(x) = x^2$
+            - Use '$$' for block math.
+            - Do NOT include the raw code unless relevant for snippets.
+            - Make it look like a finished paper.`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-pro-preview',
+    contents: { parts },
+    config: {
+      systemInstruction: systemInstruction,
+      thinkingConfig: { thinkingBudget: 4096 }
+    }
+  });
+
+  return response.text || "# Report Generation Failed";
 };

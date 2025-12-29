@@ -21,7 +21,7 @@ export interface TableData {
 
 export interface Section {
   title: string;
-  content?: string; 
+  content?: string;
   type: 'text' | 'list' | 'code' | 'table';
   tableData?: TableData;
 }
@@ -58,4 +58,9 @@ export interface HistoryItem {
   modelMode: ModelMode;
   attachedImage?: string; // base64
   audioBase64?: string; // base64 for voice queries
+}
+
+export interface CodeGenerationResponse {
+  code: string;
+  explanation: string;
 }

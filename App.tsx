@@ -10,15 +10,18 @@ import {
   FileCode,
   Calculator,
   Sigma,
-  Sparkles
+  Sparkles,
+  BookOpen, // For Report Icon
+  Printer   // For Publish Icon
 } from 'lucide-react';
 import { CodeEditor } from './components/CodeEditor';
 import { CommandWindow } from './components/CommandWindow';
 import { WorkspaceViewer } from './components/WorkspaceViewer';
 import { PlotViewer } from './components/PlotViewer';
+import { ReportViewer } from './components/ReportViewer';
 import { ChatSidebar } from './components/ChatSidebar';
 import { runtime, LogEntry, Variable, PlotData } from './lib/runtime';
-import { reviewCode } from './services/geminiService';
+import { reviewCode, generateReport } from './services/geminiService';
 
 const APP_NAME = "Calcly IDE";
 
@@ -29,8 +32,10 @@ const App: React.FC = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [variables, setVariables] = useState<Variable[]>([]);
   const [plots, setPlots] = useState<PlotData[]>([]);
+  const [reportMarkdown, setReportMarkdown] = useState<string>('');
   const [isAiProcessing, setIsAiProcessing] = useState(false);
-  const [activeMainTab, setActiveMainTab] = useState<'editor' | 'plots'>('editor');
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [activeMainTab, setActiveMainTab] = useState<'editor' | 'plots' | 'report'>('editor');
   const [mathMode, setMathMode] = useState<'numerical' | 'symbolic' | 'auto'>('auto');
   const [chatMessages, setChatMessages] = useState<{ id: string, sender: 'user' | 'ai', text: string, timestamp: number }[]>([]);
 
@@ -108,6 +113,27 @@ const App: React.FC = () => {
     handleChatSubmit("Please review the current code. Check for errors, bugs, or improvements, and fix them if necessary.");
   };
 
+  const handlePublish = async () => {
+    if (isPublishing) return;
+    setIsPublishing(true);
+    setActiveMainTab('report');
+    // Show loading state in markdown temporarily
+    setReportMarkdown('# Generating Report...\n\nPlease wait while the AI analyzes your code, results, and plots to generate a scientific report.');
+
+    try {
+      // Serialize logs and variables for context
+      const logsText = logs.slice(-20).map(l => `[${l.type}] ${l.message}`).join('\n');
+      const varsText = variables.map(v => `${v.name} = ${v.value}`).join('\n');
+
+      const markdown = await generateReport(code, logsText, varsText);
+      setReportMarkdown(markdown);
+    } catch (e: any) {
+      setReportMarkdown(`# Generation Failed\n\nError: ${e.message}`);
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
   const handleSave = () => {
     const blob = new Blob([code], { type: 'text/javascript' });
     const url = URL.createObjectURL(blob);
@@ -129,6 +155,14 @@ const App: React.FC = () => {
       setCode(content);
     };
     reader.readAsText(file);
+  };
+
+  const handleClearWorkspace = () => {
+    runtime.reset();
+  };
+
+  const handleDeleteVariable = (name: string) => {
+    runtime.deleteVariable(name);
   };
 
   return (
@@ -169,6 +203,17 @@ const App: React.FC = () => {
 
         {/* Right Actions */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={handlePublish}
+            disabled={isPublishing}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold uppercase tracking-wide mr-2 ${isPublishing ? 'bg-slate-700 text-slate-500' : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'}`}
+            title="Generate Scientific Report"
+          >
+            <Printer className="w-4 h-4" /> {isPublishing ? 'Publishing...' : 'Publish Report'}
+          </button>
+
+          <div className="w-px h-6 bg-slate-700 mx-1"></div>
+
           <button onClick={handleSave} className="p-2 rounded-lg hover:bg-slate-700 text-slate-400 transition-colors" title="Save Script"><Save className="w-5 h-5" /></button>
           <button onClick={() => fileInputRef.current?.click()} className="p-2 rounded-lg hover:bg-slate-700 text-slate-400 transition-colors" title="Open Script"><FolderOpen className="w-5 h-5" /></button>
           <input type="file" ref={fileInputRef} onChange={handleOpen} className="hidden" accept=".js,.ts,.txt" />
@@ -207,6 +252,12 @@ const App: React.FC = () => {
             >
               <Grid className="w-4 h-4" /> Plots {plots.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-pink-500/20 text-pink-400 rounded-full text-[10px]">{plots.length}</span>}
             </button>
+            <button
+              onClick={() => setActiveMainTab('report')}
+              className={`px-6 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeMainTab === 'report' ? 'bg-slate-900 text-emerald-400 border-t-2 border-t-emerald-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
+            >
+              <BookOpen className="w-4 h-4" /> Document
+            </button>
           </div>
 
           {/* Main Content Area */}
@@ -220,6 +271,9 @@ const App: React.FC = () => {
             </div>
             <div className={`absolute inset-0 ${activeMainTab === 'plots' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
               <PlotViewer plots={plots} theme={theme} />
+            </div>
+            <div className={`absolute inset-0 ${activeMainTab === 'report' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
+              <ReportViewer markdown={reportMarkdown} />
             </div>
           </div>
 
@@ -236,10 +290,13 @@ const App: React.FC = () => {
             <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Workspace</span>
           </div>
           <div className="flex-grow overflow-hidden relative bg-slate-900">
-            <WorkspaceViewer variables={variables} />
+            <WorkspaceViewer
+              variables={variables}
+              onClear={handleClearWorkspace}
+              onDeleteVariable={handleDeleteVariable}
+            />
           </div>
         </div>
-
       </div>
     </div>
   );
