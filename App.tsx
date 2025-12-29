@@ -24,6 +24,8 @@ import { runtime, LogEntry, Variable, PlotData } from './lib/runtime';
 import { reviewCode, generateReport } from './services/geminiService';
 
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
+import { EquationEditor } from './components/EquationEditor';
+
 
 const APP_NAME = "Calcly IDE";
 
@@ -40,6 +42,13 @@ const App: React.FC = () => {
   const [activeMainTab, setActiveMainTab] = useState<'editor' | 'plots' | 'report'>('editor');
   const [mathMode, setMathMode] = useState<'numerical' | 'symbolic' | 'auto'>('auto');
   const [chatMessages, setChatMessages] = useState<{ id: string, sender: 'user' | 'ai', text: string, timestamp: number }[]>([]);
+  const [activeBottomTab, setActiveBottomTab] = useState<'terminal' | 'equation'>('terminal');
+
+  const handleInsertEquationCode = (eqCode: string) => {
+    setCode(prev => prev + '\n' + eqCode);
+    setActiveMainTab('editor'); // Switch focus to editor to see result
+  };
+
 
   // Initialization
   useEffect(() => {
@@ -292,9 +301,36 @@ const App: React.FC = () => {
 
               <PanelResizeHandle className="h-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-row-resize z-50" />
 
-              {/* Bottom: Command Window */}
-              <Panel defaultSize={25} minSize={10} className="bg-slate-900">
-                <CommandWindow logs={logs} onExecute={handleCommand} />
+
+
+
+
+              {/* Bottom: Command Window / Equation Lab */}
+              <Panel defaultSize={25} minSize={10} className="bg-slate-900 flex flex-col">
+                {/* Bottom Tabs */}
+                <div className="flex bg-slate-800 border-b border-slate-700 flex-shrink-0">
+                  <button
+                    onClick={() => setActiveBottomTab('terminal')}
+                    className={`px-4 py-1.5 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeBottomTab === 'terminal' ? 'bg-slate-900 text-slate-200 border-t-2 border-t-indigo-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
+                  >
+                    <Terminal className="w-3 h-3" /> Terminal
+                  </button>
+                  <button
+                    onClick={() => setActiveBottomTab('equation')}
+                    className={`px-4 py-1.5 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeBottomTab === 'equation' ? 'bg-slate-900 text-pink-400 border-t-2 border-t-pink-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
+                  >
+                    <Sigma className="w-3 h-3" /> Equation Lab
+                  </button>
+                </div>
+
+                <div className="flex-grow overflow-hidden relative">
+                  <div className={`absolute inset-0 ${activeBottomTab === 'terminal' ? 'z-10' : 'z-0 invisible'}`}>
+                    <CommandWindow logs={logs} onExecute={handleCommand} />
+                  </div>
+                  <div className={`absolute inset-0 ${activeBottomTab === 'equation' ? 'z-10' : 'z-0 invisible'}`}>
+                    <EquationEditor onInsertCode={handleInsertEquationCode} />
+                  </div>
+                </div>
               </Panel>
 
             </PanelGroup>
