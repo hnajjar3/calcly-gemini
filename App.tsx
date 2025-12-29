@@ -21,7 +21,7 @@ import { PlotViewer } from './components/PlotViewer';
 import { ReportViewer } from './components/ReportViewer';
 import { ChatSidebar } from './components/ChatSidebar';
 import { runtime, LogEntry, Variable, PlotData } from './lib/runtime';
-import { reviewCode, generateReport } from './services/geminiService';
+import { generateReport, generateCodeFromPrompt } from './services/geminiService';
 
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import { EquationEditor } from './components/EquationEditor';
@@ -100,18 +100,19 @@ const App: React.FC = () => {
     }]);
   };
 
-  const handleChatSubmit = async (text: string) => {
+  const handleChatSubmit = async (text: string, images?: string[]) => {
     addChatMessage('user', text);
     setIsAiProcessing(true);
     try {
-      const response = await reviewCode(code, text, mathMode);
+      // Use Generation Service (supports images) instead of Review
+      const response = await generateCodeFromPrompt(text, code, mathMode, images);
 
-      if (response.fixedCode) {
-        setCode(response.fixedCode);
-        addChatMessage('ai', response.message + "\n\nI've updated the code for you.");
-        setActiveMainTab('editor');
+      if (response.code) {
+        setCode(response.code);
+        addChatMessage('ai', response.explanation);
+        setActiveMainTab('editor'); // Switch to editor to show new code
       } else {
-        addChatMessage('ai', response.message);
+        addChatMessage('ai', response.explanation || "I couldn't generate any code for that request.");
       }
     } catch (err: any) {
       addChatMessage('ai', `Error: ${err.message}`);
@@ -119,6 +120,7 @@ const App: React.FC = () => {
       setIsAiProcessing(false);
     }
   };
+
 
   const handleReviewClick = () => {
     handleChatSubmit("Please review the current code. Check for errors, bugs, or improvements, and fix them if necessary.");

@@ -15,6 +15,7 @@
     "@cortex-js/compute-engine": "^0.30.2",
     "@google/genai": "^1.30.0",
     "@monaco-editor/react": "^4.7.0",
+    "@types/papaparse": "^5.5.2",
     "@types/uuid": "^10.0.0",
     "algebrite": "^1.4.0",
     "chart.js": "^4.4.1",
@@ -24,6 +25,7 @@
     "mathjs": "^15.1.0",
     "mathlive": "^0.108.2",
     "nerdamer": "^1.1.13",
+    "papaparse": "^5.5.3",
     "plotly.js": "^3.3.1",
     "react": "^18.2.0",
     "react-chartjs-2": "^5.2.0",
@@ -33,7 +35,8 @@
     "react-resizable-panels": "^4.0.16",
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^20.11.24",

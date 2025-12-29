@@ -27,12 +27,30 @@ const getApiKey = (): string => {
   return process.env.GEMINI_API_KEY || process.env.API_KEY || '';
 };
 
-export const generateCodeFromPrompt = async (query: string, previousCode?: string, mathMode: 'numerical' | 'symbolic' | 'auto' = 'auto'): Promise<CodeGenerationResponse> => {
+export const generateCodeFromPrompt = async (query: string, previousCode?: string, mathMode: 'numerical' | 'symbolic' | 'auto' = 'auto', images?: string[]): Promise<CodeGenerationResponse> => {
   const ai = new GoogleGenAI({ apiKey: getApiKey() });
   const parts: any[] = [];
+
   if (previousCode) {
     parts.push({ text: `Current Code:\n\`\`\`javascript\n${previousCode}\n\`\`\`` });
   }
+
+  // Add images if present
+  if (images && images.length > 0) {
+    images.forEach(base64 => {
+      // Expect base64 to be standard data:image/png;base64,.....
+      const match = base64.match(/^data:(image\/[a-z]+);base64,(.+)$/);
+      if (match) {
+        parts.push({
+          inlineData: {
+            mimeType: match[1],
+            data: match[2]
+          }
+        });
+      }
+    });
+  }
+
   parts.push({ text: `User Request: "${query}"` });
   parts.push({ text: `Mode: ${mathMode.toUpperCase()}` });
 
