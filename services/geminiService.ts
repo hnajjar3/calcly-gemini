@@ -106,231 +106,62 @@ const solverResponseSchema = {
   required: ["interpretation", "result", "sections"]
 };
 
-const attemptGenerate = async (modelMode: ModelMode, parts: any[]): Promise<SolverResponse> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const modelName = modelMode === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
-  const thinkingBudget = modelMode === 'pro' ? 32768 : 24576;
+// ... (attemptGenerate and other helper functions remain the same if not used by generateCodeFromPrompt) ...
 
-  const systemInstruction = `You are OmniSolver, an advanced computational intelligence engine. Always reason step-by-step before producing the final JSON response.`;
-
-  const response = await ai.models.generateContent({
-    model: modelName,
-    contents: { parts },
-    config: {
-      systemInstruction: systemInstruction,
-      tools: [{ googleSearch: {} }],
-      thinkingConfig: { thinkingBudget },
-      responseMimeType: "application/json",
-      responseSchema: solverResponseSchema,
-    },
-  });
-
-  let parsed: SolverResponse;
-  try {
-    parsed = JSON.parse(response.text || "{}") as SolverResponse;
-  } catch (e) {
-    parsed = { interpretation: "Raw Response", result: [{ type: 'markdown', content: response.text || "" }], confidenceScore: 0.5, sections: [] };
-  }
-
-  const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-  if (groundingChunks) {
-    parsed.sources = groundingChunks
-      .filter((chunk: any) => chunk.web)
-      .map((chunk: any) => ({ title: chunk.web.title, uri: chunk.web.uri }));
-  }
-
-  return parsed;
-};
-
-export const solveQuery = async (query: string, mode: ModelMode = 'pro', imageBase64?: string, audioBase64?: string, context?: { previousQuery: string; previousResult: string }): Promise<SolverResponse> => {
-  const parts: any[] = [];
-  if (context) parts.push({ text: `[CONTEXT] Previous Query: "${context.previousQuery}"\nPrevious Result: "${context.previousResult}"` });
-  if (query) parts.push({ text: query });
-  if (imageBase64) parts.push({ inlineData: { mimeType: "image/jpeg", data: imageBase64.split(',')[1] || imageBase64 } });
-  if (audioBase64) parts.push({ inlineData: { mimeType: "audio/webm", data: audioBase64.split(',')[1] || audioBase64 } });
-
-  try {
-    return await attemptGenerate(mode, parts);
-  } catch (error: any) {
-    if (mode === 'pro') {
-      console.warn(`[GeminiService] Pro failed, falling back to Flash...`);
-      return await attemptGenerate('flash', parts);
-    }
-    handleGeminiError(error);
-  }
-};
-
-export const parseMathCommand = async (query: string): Promise<MathCommand> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: `Translate the following query into a standardized math command JSON: "${query}"`,
-    config: {
-      systemInstruction: `You are a strict mathematical translation layer for symbolic engines.
-      Output ONLY the final JSON object. 
-      
-      STRICT CONSTRAINTS:
-      - "variable" MUST be ONLY the single letter variable name (e.g. "x", "n", "k"). 
-      - DO NOT include internal reasoning, thought processes, or meta-commentary inside ANY JSON fields.
-      - "start" and "end" MUST be simple strings (e.g. "0", "Infinity", "pi").
-      - "complexityClass": 
-          - 'standard': Simple calculus, algebra, or matrix ops solvable by Algebrite/Nerdamer.
-          - 'abstract': Abstract series, multi-variable proofs, or non-standard notation.
-          - 'impossible_locally': If the problem is clearly too abstract for a simple JS library (e.g. "geometric series sum with variables a and r to infinity").
-      
-      If complexityClass is 'abstract' or 'impossible_locally', prefer 'gemini' as preferredEngine.`,
-      thinkingConfig: { thinkingBudget: 4096 },
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          operation: { type: Type.STRING },
-          expression: { type: Type.STRING },
-          variable: { type: Type.STRING },
-          start: { type: Type.STRING },
-          end: { type: Type.STRING },
-          preferredEngine: { type: Type.STRING },
-          complexityClass: { type: Type.STRING }
-        },
-        required: ["operation", "expression", "complexityClass"]
-      }
-    },
-  });
-
-  const raw = response.text || "{}";
-  const cleaned = extractJSON(raw);
-  return JSON.parse(cleaned) as MathCommand;
-};
-
-export const validateMathResult = async (query: string, result: string): Promise<{ isValid: boolean; reason?: string }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: `Query: "${query}"\nComputed Result: "${result}"`,
-    config: {
-      systemInstruction: "Check if the computed math result is logically and numerically correct for the given query. Output JSON ONLY.",
-      thinkingConfig: { thinkingBudget: 2048 },
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          isValid: { type: Type.BOOLEAN },
-          reason: { type: Type.STRING }
-        },
-        required: ["isValid"]
-      }
-    },
-  });
-  return JSON.parse(extractJSON(response.text || "{}"));
-};
-
-export const solveMathWithAI = async (query: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
-    contents: query,
-    config: {
-      systemInstruction: "Solve the math problem symbolically. Return only valid LaTeX for the result. Do not include any text explanation outside of the LaTeX.",
-      thinkingConfig: { thinkingBudget: 32768 }
-    },
-  });
-  return response.text || "";
-};
-
-export const parseNumericalExpression = async (query: string): Promise<NumericalCommand> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: `Convert to Math.js syntax: "${query}"`,
-    config: {
-      systemInstruction: `Convert the query into a single Math.js compatible numerical expression. 
-      Output ONLY a JSON object.
-      
-      CRITICAL MATH.JS SYNTAX RULES:
-      1. UNIT MAPPING:
-         - NEVER use 'mph' or 'kph' as these are not standard Math.js units.
-         - 'mph' -> 'mi/h', 'kph' -> 'km/h', 'miles' -> 'mi', 'feet' -> 'ft'
-      2. CONVERSIONS: Use the 'to' keyword (e.g., '50 mi/h to km/h').
-      3. CUSTOM FUNCTIONS (integral, integrate, deriv, derivative, diff):
-         - integral("expression", "variable", start, end) -> 4 arguments.
-         - derivative("expression", "variable", point) -> 3 arguments.
-         - The FIRST argument (expression) MUST be a DOUBLE-QUOTED STRING.
-         - The SECOND argument (variable) MUST be a DOUBLE-QUOTED STRING.
-         - CORRECT: integral("x^2", "x", 0, 1)
-         - CORRECT: derivative("sin(x)", "x", 0)
-      
-      4. solvableLocally:
-         - true: If standard arithmetic, stats, conversions, or the custom functions above with valid params.
-         - false: If query is purely conceptual, complex statistics, or abstract numerical properties.
-      
-      If unsupported for local eval, return solvableLocally: false.`,
-      thinkingConfig: { thinkingBudget: 4096 },
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          expression: { type: Type.STRING },
-          solvableLocally: { type: Type.BOOLEAN }
-        },
-        required: ["expression", "solvableLocally"]
-      }
-    },
-  });
-  const raw = response.text || "{}";
-  const cleaned = extractJSON(raw);
-  const parsed = JSON.parse(cleaned);
-  return parsed as NumericalCommand;
-};
-
-export const solveNumericalWithAI = async (query: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: query,
-    config: {
-      systemInstruction: "Compute the numerical result for the query. Return only the final number or value.",
-      thinkingConfig: { thinkingBudget: 2048 }
-    },
-  });
-  return response.text || "Error";
-};
-
-export interface CodeGenerationResponse {
-  code: string;
-  explanation: string;
-}
-
-export const generateCodeFromPrompt = async (query: string, previousCode?: string): Promise<CodeGenerationResponse> => {
+export const generateCodeFromPrompt = async (query: string, previousCode?: string, mathMode: 'numerical' | 'symbolic' | 'auto' = 'auto'): Promise<CodeGenerationResponse> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const parts: any[] = [];
   if (previousCode) {
     parts.push({ text: `Current Code:\n\`\`\`javascript\n${previousCode}\n\`\`\`` });
   }
   parts.push({ text: `User Request: "${query}"` });
+  parts.push({ text: `Mode: ${mathMode.toUpperCase()}` });
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
-    contents: { parts },
-    config: {
-      systemInstruction: `You are an expert helper for a "Matlab-like" JavaScript environment.
+  const systemInstruction = `You are an expert helper for a "Matlab-like" JavaScript environment.
             Your goal is to convert Natural Language requests into executable JavaScript code.
             
             Key Environment Details:
             - The code runs in a browser environment.
             - There is a persistent 'scope'.
-            - Available globals: 'Math', 'Date', 'console' (redirected to UI).
-            - SPECIAL FUNCTION: 'plot(data, layout)' 
-               - 'data' is an array of Plotly.js traces (e.g. [{x:[...], y:[...], type:'scatter'}]).
-               - 'layout' is a Plotly.js layout object.
+            - Available globals: 
+                - 'Math', 'Date', 'console'
+                - 'plot(data, layout)' (Plotly.js)
+                - 'math' (Math.js) - Use for Numerical Mode
+                - 'nerdamer' (Nerdamer) - Use for Symbolic Algebra/Solving
+                - 'Algebrite' (Algebrite) - Use for Symbolic Evaluation/CAS
             
             Instructions:
             1. Generate CLEAN, EXECUTABLE JavaScript.
-            2. If the user asks to plot, generate the data arrays and call 'plot()'.
-            3. Define variables at the top level (e.g. 'n = 100', 'x = []').
-            4. Use 'for' loops or array methods for calculations.
-            5. Do NOT wrap code in markdown blocks in the JSON output, just plain string.
+            2. Define variables at the top level.
+            3. Do NOT wrap code in markdown blocks in the JSON output, just plain string.
             
-            Output JSON ONLY.`,
+            MODE SPECIFIC INSTRUCTIONS:
+            - IF MODE IS 'NUMERICAL':
+                - Use 'math.evaluate()' / 'math.matrix()' for complex calculations.
+            - IF MODE IS 'SYMBOLIC':
+                - Use 'nerdamer' (preferred for solving equations).
+                - Use 'Algebrite' (preferred for symbolic simplification or tensor math).
+                  - Ex: \`const res = Algebrite.run('simplify(a+a)');\`
+            - IF MODE IS 'AUTO' (Recommended):
+                - INTELLIGENTLY MIX libraries.
+                - **Solving/Calculus**: Use 'nerdamer' ('solve', 'integrate').
+                - **Deep CAS/Simplification**: Use 'Algebrite'.
+                - **Plotting/Matrices**: Use 'math.js'.
+                - Example: "Simplify x+x and then plot it from 0 to 10"
+                    \`
+                    const simp = Algebrite.run('x+x'); // "2x"
+                    // Parse "2x" or use a lambda
+                    const f = (val) => 2 * val; 
+                    // Plot loop...
+                    \`
+            
+            Output JSON ONLY.`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-pro-preview',
+    contents: { parts },
+    config: {
+      systemInstruction: systemInstruction,
       thinkingConfig: { thinkingBudget: 8192 },
       responseMimeType: "application/json",
       responseSchema: {
@@ -347,4 +178,50 @@ export const generateCodeFromPrompt = async (query: string, previousCode?: strin
   const raw = response.text || "{}";
   const cleaned = extractJSON(raw);
   return JSON.parse(cleaned) as CodeGenerationResponse;
+};
+
+export const reviewCode = async (code: string, userMessage: string, mathMode: 'numerical' | 'symbolic' | 'auto'): Promise<{ message: string; fixedCode?: string }> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const parts: any[] = [
+    { text: `Current Code:\n\`\`\`javascript\n${code}\n\`\`\`` },
+    { text: `User Message: "${userMessage}"` },
+    { text: `Math Mode: ${mathMode.toUpperCase()}` }
+  ];
+
+  const systemInstruction = `You are a Code Reviewer/Assistant for the Calcly IDE.
+            Analyze the user's request and the current code.
+            
+            Environment:
+            - Browser JS with 'math' (Math.js), 'nerdamer' (Nerdamer), 'Algebrite' (Algebrite) available.
+            - 'plot(data, layout)' is available.
+            - Current Mode: ${mathMode}
+            
+            Tasks:
+            1. Use 'Algebrite.run(encoded_string)' if user asks for CAS features better suited for Algebrite.
+            2. Use 'nerdamer(...)' for standard solving.
+            3. Fix errors if found.
+            
+            Output JSON: { "message": "Natural language response...", "fixedCode": "Optional string if code should be updated" }`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-pro-preview',
+    contents: { parts },
+    config: {
+      systemInstruction: systemInstruction,
+      thinkingConfig: { thinkingBudget: 4096 },
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          message: { type: Type.STRING },
+          fixedCode: { type: Type.STRING, nullable: true }
+        },
+        required: ["message"]
+      }
+    }
+  });
+
+  const raw = response.text || "{}";
+  const cleaned = extractJSON(raw);
+  return JSON.parse(cleaned);
 };

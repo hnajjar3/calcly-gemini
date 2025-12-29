@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  Play,
   Terminal,
   Grid,
   Cpu,
@@ -8,28 +7,32 @@ import {
   Sun,
   Save,
   FolderOpen,
-  Image as ImageIcon,
-  MessageSquare
+  FileCode,
+  Calculator,
+  Sigma,
+  Sparkles
 } from 'lucide-react';
 import { CodeEditor } from './components/CodeEditor';
 import { CommandWindow } from './components/CommandWindow';
 import { WorkspaceViewer } from './components/WorkspaceViewer';
 import { PlotViewer } from './components/PlotViewer';
+import { ChatSidebar } from './components/ChatSidebar';
 import { runtime, LogEntry, Variable, PlotData } from './lib/runtime';
-import { generateCodeFromPrompt } from './services/geminiService';
+import { reviewCode } from './services/geminiService';
 
 const APP_NAME = "Calcly IDE";
 
 const App: React.FC = () => {
   // State
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
-  const [code, setCode] = useState<string>('// Welcome to Calcly IDE\n// Type a request above or write code here.\n\nconst x = [];\nconst y = [];\nfor (let i = 0; i < 100; i++) {\n  x.push(i / 10);\n  y.push(Math.sin(i / 10) * Math.exp(-i/50));\n}\n\nplot([{x, y, type: "scatter", mode: "lines"}], {title: "Damped Sine Wave"});\n');
+  const [code, setCode] = useState<string>('// Welcome to Calcly IDE\n// Ask the AI to write code or type it here.\n// Example: "Solve x^2 - x - 1 = 0"\n\nconst x = [];\nconst y = [];\nfor (let i = 0; i < 100; i++) {\n  x.push(i / 10);\n  y.push(Math.sin(i / 10) * Math.exp(-i/50));\n}\n\nplot([{x, y, type: "scatter", mode: "lines"}], {title: "Damped Sine Wave"});\n');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [variables, setVariables] = useState<Variable[]>([]);
   const [plots, setPlots] = useState<PlotData[]>([]);
-  const [aiPrompt, setAiPrompt] = useState('');
   const [isAiProcessing, setIsAiProcessing] = useState(false);
-  const [activeRightTab, setActiveRightTab] = useState<'workspace' | 'plots'>('plots');
+  const [activeMainTab, setActiveMainTab] = useState<'editor' | 'plots'>('editor');
+  const [mathMode, setMathMode] = useState<'numerical' | 'symbolic' | 'auto'>('auto');
+  const [chatMessages, setChatMessages] = useState<{ id: string, sender: 'user' | 'ai', text: string, timestamp: number }[]>([]);
 
   // Initialization
   useEffect(() => {
@@ -39,7 +42,7 @@ const App: React.FC = () => {
     runtime.setCallbacks(
       (plot) => {
         setPlots(prev => [...prev, plot]);
-        setActiveRightTab('plots');
+        setActiveMainTab('plots'); // Auto-switch to plots on new plot
       },
       (log) => {
         setLogs(prev => [...prev, log]);
@@ -50,7 +53,7 @@ const App: React.FC = () => {
     );
 
     // Initial sync
-    runtime.execute(''); // Just to trigger variable refresh if any
+    runtime.execute('');
   }, []);
 
   const toggleTheme = () => {
@@ -72,20 +75,60 @@ const App: React.FC = () => {
     await runtime.execute(cmd);
   };
 
-  const handleAiSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!aiPrompt.trim()) return;
+  const addChatMessage = (sender: 'user' | 'ai', text: string) => {
+    setChatMessages(prev => [...prev, {
+      id: Date.now().toString() + Math.random(),
+      sender,
+      text,
+      timestamp: Date.now()
+    }]);
+  };
 
+  const handleChatSubmit = async (text: string) => {
+    addChatMessage('user', text);
     setIsAiProcessing(true);
     try {
-      const response = await generateCodeFromPrompt(aiPrompt, code);
-      setCode(response.code);
-      setLogs(prev => [...prev, { id: Date.now().toString(), type: 'info', message: `AI: ${response.explanation}`, timestamp: Date.now() }]);
+      const response = await reviewCode(code, text, mathMode);
+
+      if (response.fixedCode) {
+        setCode(response.fixedCode);
+        addChatMessage('ai', response.message + "\n\nI've updated the code for you.");
+        setActiveMainTab('editor');
+      } else {
+        addChatMessage('ai', response.message);
+      }
     } catch (err: any) {
-      setLogs(prev => [...prev, { id: Date.now().toString(), type: 'error', message: `AI Error: ${err.message}`, timestamp: Date.now() }]);
+      addChatMessage('ai', `Error: ${err.message}`);
     } finally {
       setIsAiProcessing(false);
     }
+  };
+
+  const handleReviewClick = () => {
+    handleChatSubmit("Please review the current code. Check for errors, bugs, or improvements, and fix them if necessary.");
+  };
+
+  const handleSave = () => {
+    const blob = new Blob([code], { type: 'text/javascript' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `calcly_script_${new Date().toISOString().slice(0, 10)}.js`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleOpen = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      setCode(content);
+    };
+    reader.readAsText(file);
   };
 
   return (
@@ -99,33 +142,36 @@ const App: React.FC = () => {
           <span className="font-bold text-lg tracking-tight">{APP_NAME}</span>
         </div>
 
-        {/* AI Input */}
-        <form onSubmit={handleAiSubmit} className="flex-grow max-w-2xl mx-8 relative">
-          <div className="relative group">
-            <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 to-pink-500 rounded-lg opacity-25 group-focus-within:opacity-50 transition-opacity blur"></div>
-            <div className="relative flex items-center bg-slate-900 border border-slate-600 rounded-lg overflow-hidden group-focus-within:border-indigo-500 transition-colors">
-              <MessageSquare className="w-5 h-5 text-slate-400 ml-3" />
-              <input
-                type="text"
-                value={aiPrompt}
-                onChange={(e) => setAiPrompt(e.target.value)}
-                placeholder="Tell Calcly what to code... (e.g. 'Generate a 3D surface plot of z = x^2 + y^2')"
-                className="w-full bg-transparent border-none px-3 py-2 text-sm focus:outline-none text-slate-200 placeholder-slate-500"
-              />
-              <button
-                type="submit"
-                disabled={isAiProcessing}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border-l border-slate-700 text-indigo-400 font-medium text-xs uppercase tracking-wider transition-colors disabled:opacity-50"
-              >
-                {isAiProcessing ? 'Thinking...' : 'Generate'}
-              </button>
-            </div>
-          </div>
-        </form>
+        {/* Center: Math Mode Toggle */}
+        <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-600 shrink-0 mx-4">
+          <button
+            onClick={() => setMathMode('auto')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors text-xs font-medium uppercase tracking-wider ${mathMode === 'auto' ? 'bg-gradient-to-r from-indigo-600 to-pink-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+            title="Auto / Hybrid Mode (AI Decides)"
+          >
+            <Sparkles className="w-4 h-4" /> Auto
+          </button>
+          <button
+            onClick={() => setMathMode('numerical')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors text-xs font-medium uppercase tracking-wider ${mathMode === 'numerical' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+            title="Numerical Mode (Math.js)"
+          >
+            <Calculator className="w-4 h-4" /> Numerical
+          </button>
+          <button
+            onClick={() => setMathMode('symbolic')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors text-xs font-medium uppercase tracking-wider ${mathMode === 'symbolic' ? 'bg-pink-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+            title="Symbolic Mode (Nerdamer)"
+          >
+            <Sigma className="w-4 h-4" /> Symbolic
+          </button>
+        </div>
 
+        {/* Right Actions */}
         <div className="flex items-center gap-2">
-          <button className="p-2 rounded-lg hover:bg-slate-700 text-slate-400 transition-colors" title="Save Script"><Save className="w-5 h-5" /></button>
-          <button className="p-2 rounded-lg hover:bg-slate-700 text-slate-400 transition-colors" title="Open Script"><FolderOpen className="w-5 h-5" /></button>
+          <button onClick={handleSave} className="p-2 rounded-lg hover:bg-slate-700 text-slate-400 transition-colors" title="Save Script"><Save className="w-5 h-5" /></button>
+          <button onClick={() => fileInputRef.current?.click()} className="p-2 rounded-lg hover:bg-slate-700 text-slate-400 transition-colors" title="Open Script"><FolderOpen className="w-5 h-5" /></button>
+          <input type="file" ref={fileInputRef} onChange={handleOpen} className="hidden" accept=".js,.ts,.txt" />
           <div className="w-px h-6 bg-slate-700 mx-1"></div>
           <button onClick={toggleTheme} className="p-2 rounded-lg hover:bg-slate-700 text-slate-400 transition-colors">
             {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
@@ -136,48 +182,61 @@ const App: React.FC = () => {
       {/* Main Layout */}
       <div className="flex-grow flex overflow-hidden">
 
-        {/* Left Panel: Editor & Command Window */}
-        <div className="flex-grow flex flex-col min-w-0">
-          {/* Editor Area */}
-          <div className="flex-grow relative h-2/3 min-h-[300px]">
-            <CodeEditor
-              code={code}
-              onChange={(val) => setCode(val || '')}
-              onRun={handleRunCode}
-            />
+        {/* Left Panel: Chat Sidebar */}
+        <ChatSidebar
+          messages={chatMessages}
+          onSendMessage={handleChatSubmit}
+          onReviewCode={handleReviewClick}
+          isProcessing={isAiProcessing}
+        />
+
+        {/* Middle Panel: Editor/Plots Tabs + Command Window */}
+        <div className="flex-grow flex flex-col min-w-0 border-l border-r border-slate-700">
+
+          {/* Tabs for Main Panel */}
+          <div className="flex bg-slate-800 border-b border-slate-700">
+            <button
+              onClick={() => setActiveMainTab('editor')}
+              className={`px-6 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeMainTab === 'editor' ? 'bg-slate-900 text-indigo-400 border-t-2 border-t-indigo-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
+            >
+              <FileCode className="w-4 h-4" /> Script Editor
+            </button>
+            <button
+              onClick={() => setActiveMainTab('plots')}
+              className={`px-6 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeMainTab === 'plots' ? 'bg-slate-900 text-pink-400 border-t-2 border-t-pink-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
+            >
+              <Grid className="w-4 h-4" /> Plots {plots.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-pink-500/20 text-pink-400 rounded-full text-[10px]">{plots.length}</span>}
+            </button>
+          </div>
+
+          {/* Main Content Area */}
+          <div className="flex-grow relative h-2/3 min-h-[300px] bg-[#1e1e1e]">
+            <div className={`absolute inset-0 ${activeMainTab === 'editor' ? 'z-10' : 'z-0 invisible'}`}>
+              <CodeEditor
+                code={code}
+                onChange={(val) => setCode(val || '')}
+                onRun={handleRunCode}
+              />
+            </div>
+            <div className={`absolute inset-0 ${activeMainTab === 'plots' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
+              <PlotViewer plots={plots} theme={theme} />
+            </div>
           </div>
 
           {/* Command Window */}
-          <div className="h-1/3 min-h-[150px] border-t border-slate-700 flex flex-col">
+          <div className="h-1/3 min-h-[150px] border-t border-slate-700 flex flex-col bg-slate-900">
             <CommandWindow logs={logs} onExecute={handleCommand} />
           </div>
         </div>
 
-        {/* Right Panel: Workspace & Plots */}
-        <div className="w-[450px] shrink-0 bg-slate-800 border-l border-slate-700 flex flex-col shadow-xl z-20">
-          {/* Tabs */}
-          <div className="flex border-b border-slate-700">
-            <button
-              onClick={() => setActiveRightTab('plots')}
-              className={`flex-1 py-3 text-xs font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors ${activeRightTab === 'plots' ? 'bg-slate-700 text-indigo-400 border-b-2 border-indigo-500' : 'text-slate-400 hover:bg-slate-700/50'}`}
-            >
-              <Grid className="w-4 h-4" /> Plots
-            </button>
-            <button
-              onClick={() => setActiveRightTab('workspace')}
-              className={`flex-1 py-3 text-xs font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors ${activeRightTab === 'workspace' ? 'bg-slate-700 text-emerald-400 border-b-2 border-emerald-500' : 'text-slate-400 hover:bg-slate-700/50'}`}
-            >
-              <Terminal className="w-4 h-4" /> Variables
-            </button>
+        {/* Right Panel: Workspace Only */}
+        <div className="w-[300px] shrink-0 bg-slate-800 flex flex-col shadow-xl z-20">
+          <div className="px-4 py-3 border-b border-slate-700 bg-slate-800 flex items-center gap-2">
+            <Terminal className="w-4 h-4 text-emerald-400" />
+            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Workspace</span>
           </div>
-
-          {/* Content */}
           <div className="flex-grow overflow-hidden relative bg-slate-900">
-            {activeRightTab === 'plots' ? (
-              <PlotViewer plots={plots} />
-            ) : (
-              <WorkspaceViewer variables={variables} />
-            )}
+            <WorkspaceViewer variables={variables} />
           </div>
         </div>
 
