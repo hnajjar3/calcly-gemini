@@ -22,21 +22,21 @@ const extractJSON = (raw: string): string => {
   // Try to find a JSON block
   const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
   if (jsonBlockMatch) return jsonBlockMatch[1];
-  
+
   // Fallback: Find first { and last }
   const firstBrace = text.indexOf('{');
   const lastBrace = text.lastIndexOf('}');
   if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
     return text.substring(firstBrace, lastBrace + 1);
   }
-  return text; 
+  return text;
 };
 
 // Centralized Error Handler
 const handleGeminiError = (error: any): never => {
   console.error("Gemini API Error details:", error);
   let msg = error.message || error.toString();
-  
+
   const lowerMsg = msg.toLowerCase();
   if (lowerMsg.includes('429') || lowerMsg.includes('quota')) throw new Error("⚠️ API Quota Exceeded.");
   if (lowerMsg.includes('api_key') || lowerMsg.includes('403')) throw new Error("⚠️ Invalid API Key.");
@@ -87,16 +87,16 @@ const solverResponseSchema = {
         type: { type: Type.STRING },
         title: { type: Type.STRING },
         labels: { type: Type.ARRAY, items: { type: Type.STRING } },
-        datasets: { 
-           type: Type.ARRAY, 
-           items: { 
-             type: Type.OBJECT, 
-             properties: {
-               label: { type: Type.STRING },
-               data: { type: Type.ARRAY, items: { type: Type.NUMBER } }
-             },
-             required: ["label", "data"]
-           } 
+        datasets: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              label: { type: Type.STRING },
+              data: { type: Type.ARRAY, items: { type: Type.NUMBER } }
+            },
+            required: ["label", "data"]
+          }
         }
       },
       required: ["type", "datasets"]
@@ -107,39 +107,39 @@ const solverResponseSchema = {
 };
 
 const attemptGenerate = async (modelMode: ModelMode, parts: any[]): Promise<SolverResponse> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const modelName = modelMode === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
-    const thinkingBudget = modelMode === 'pro' ? 32768 : 24576; 
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const modelName = modelMode === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
+  const thinkingBudget = modelMode === 'pro' ? 32768 : 24576;
 
-    const systemInstruction = `You are OmniSolver, an advanced computational intelligence engine. Always reason step-by-step before producing the final JSON response.`;
+  const systemInstruction = `You are OmniSolver, an advanced computational intelligence engine. Always reason step-by-step before producing the final JSON response.`;
 
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: { parts },
-      config: {
-        systemInstruction: systemInstruction,
-        tools: [{ googleSearch: {} }],
-        thinkingConfig: { thinkingBudget },
-        responseMimeType: "application/json",
-        responseSchema: solverResponseSchema,
-      },
-    });
+  const response = await ai.models.generateContent({
+    model: modelName,
+    contents: { parts },
+    config: {
+      systemInstruction: systemInstruction,
+      tools: [{ googleSearch: {} }],
+      thinkingConfig: { thinkingBudget },
+      responseMimeType: "application/json",
+      responseSchema: solverResponseSchema,
+    },
+  });
 
-    let parsed: SolverResponse;
-    try {
-      parsed = JSON.parse(response.text || "{}") as SolverResponse;
-    } catch (e) {
-      parsed = { interpretation: "Raw Response", result: [{ type: 'markdown', content: response.text || "" }], confidenceScore: 0.5, sections: [] };
-    }
-    
-    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-    if (groundingChunks) {
-      parsed.sources = groundingChunks
-        .filter((chunk: any) => chunk.web)
-        .map((chunk: any) => ({ title: chunk.web.title, uri: chunk.web.uri }));
-    }
+  let parsed: SolverResponse;
+  try {
+    parsed = JSON.parse(response.text || "{}") as SolverResponse;
+  } catch (e) {
+    parsed = { interpretation: "Raw Response", result: [{ type: 'markdown', content: response.text || "" }], confidenceScore: 0.5, sections: [] };
+  }
 
-    return parsed;
+  const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+  if (groundingChunks) {
+    parsed.sources = groundingChunks
+      .filter((chunk: any) => chunk.web)
+      .map((chunk: any) => ({ title: chunk.web.title, uri: chunk.web.uri }));
+  }
+
+  return parsed;
 };
 
 export const solveQuery = async (query: string, mode: ModelMode = 'pro', imageBase64?: string, audioBase64?: string, context?: { previousQuery: string; previousResult: string }): Promise<SolverResponse> => {
@@ -153,8 +153,8 @@ export const solveQuery = async (query: string, mode: ModelMode = 'pro', imageBa
     return await attemptGenerate(mode, parts);
   } catch (error: any) {
     if (mode === 'pro') {
-        console.warn(`[GeminiService] Pro failed, falling back to Flash...`);
-        return await attemptGenerate('flash', parts);
+      console.warn(`[GeminiService] Pro failed, falling back to Flash...`);
+      return await attemptGenerate('flash', parts);
     }
     handleGeminiError(error);
   }
@@ -293,4 +293,58 @@ export const solveNumericalWithAI = async (query: string): Promise<string> => {
     },
   });
   return response.text || "Error";
+};
+
+export interface CodeGenerationResponse {
+  code: string;
+  explanation: string;
+}
+
+export const generateCodeFromPrompt = async (query: string, previousCode?: string): Promise<CodeGenerationResponse> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const parts: any[] = [];
+  if (previousCode) {
+    parts.push({ text: `Current Code:\n\`\`\`javascript\n${previousCode}\n\`\`\`` });
+  }
+  parts.push({ text: `User Request: "${query}"` });
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-pro-preview',
+    contents: { parts },
+    config: {
+      systemInstruction: `You are an expert helper for a "Matlab-like" JavaScript environment.
+            Your goal is to convert Natural Language requests into executable JavaScript code.
+            
+            Key Environment Details:
+            - The code runs in a browser environment.
+            - There is a persistent 'scope'.
+            - Available globals: 'Math', 'Date', 'console' (redirected to UI).
+            - SPECIAL FUNCTION: 'plot(data, layout)' 
+               - 'data' is an array of Plotly.js traces (e.g. [{x:[...], y:[...], type:'scatter'}]).
+               - 'layout' is a Plotly.js layout object.
+            
+            Instructions:
+            1. Generate CLEAN, EXECUTABLE JavaScript.
+            2. If the user asks to plot, generate the data arrays and call 'plot()'.
+            3. Define variables at the top level (e.g. 'n = 100', 'x = []').
+            4. Use 'for' loops or array methods for calculations.
+            5. Do NOT wrap code in markdown blocks in the JSON output, just plain string.
+            
+            Output JSON ONLY.`,
+      thinkingConfig: { thinkingBudget: 8192 },
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          code: { type: Type.STRING, description: "The executable JavaScript code" },
+          explanation: { type: Type.STRING, description: "Brief explanation of what the code does" }
+        },
+        required: ["code", "explanation"]
+      }
+    }
+  });
+
+  const raw = response.text || "{}";
+  const cleaned = extractJSON(raw);
+  return JSON.parse(cleaned) as CodeGenerationResponse;
 };
