@@ -102,6 +102,7 @@ const App: React.FC = () => {
   };
 
   const handleRunCode = async () => {
+    setActiveInteraction(null); // Clear previous interactions
     await runtime.execute(code);
   };
 
