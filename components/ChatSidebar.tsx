@@ -76,7 +76,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ messages, onSendMessag
     };
 
     return (
-        <div className="flex flex-col h-full bg-slate-800 border-r border-slate-700 w-[350px] shrink-0">
+        <div className="flex flex-col h-full bg-slate-800 border-r border-slate-700 w-full">
             {/* Header */}
             <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
                 <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider flex items-center gap-2">

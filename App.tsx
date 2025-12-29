@@ -12,7 +12,13 @@ import {
   Sigma,
   Sparkles,
   BookOpen, // For Report Icon
-  Printer   // For Publish Icon
+  Printer,   // For Publish Icon
+  ChevronDown,
+  ChevronUp,
+  LayoutTemplate,
+  PanelLeft,
+  PanelRight,
+  Minimize2
 } from 'lucide-react';
 import { CodeEditor } from './components/CodeEditor';
 import { CommandWindow } from './components/CommandWindow';
@@ -43,6 +49,11 @@ const App: React.FC = () => {
   const [mathMode, setMathMode] = useState<'numerical' | 'symbolic' | 'auto'>('auto');
   const [chatMessages, setChatMessages] = useState<{ id: string, sender: 'user' | 'ai', text: string, timestamp: number }[]>([]);
   const [activeBottomTab, setActiveBottomTab] = useState<'terminal' | 'equation'>('terminal');
+
+
+  const [isBottomCollapsed, setIsBottomCollapsed] = useState(false);
+  const [isLeftCollapsed, setIsLeftCollapsed] = useState(false);
+  const [isRightCollapsed, setIsRightCollapsed] = useState(false);
 
   const handleInsertEquationCode = (eqCode: string) => {
     setCode(prev => prev + '\n' + eqCode);
@@ -187,6 +198,13 @@ const App: React.FC = () => {
             <Cpu className="w-5 h-5 text-white" />
           </div>
           <span className="font-bold text-lg tracking-tight">{APP_NAME}</span>
+          <button
+            onClick={() => setIsLeftCollapsed(!isLeftCollapsed)}
+            className={`p-1.5 rounded-md transition-colors ml-2 ${isLeftCollapsed ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'}`}
+            title={isLeftCollapsed ? "Show Chat" : "Hide Chat"}
+          >
+            <PanelLeft className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Center: Math Mode Toggle */}
@@ -234,6 +252,14 @@ const App: React.FC = () => {
           <button onClick={toggleTheme} className="p-2 rounded-lg hover:bg-slate-700 text-slate-400 transition-colors">
             {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
           </button>
+          <div className="w-px h-6 bg-slate-700 mx-1"></div>
+          <button
+            onClick={() => setIsRightCollapsed(!isRightCollapsed)}
+            className={`p-1.5 rounded-md transition-colors ${isRightCollapsed ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'}`}
+            title={isRightCollapsed ? "Show Workspace" : "Hide Workspace"}
+          >
+            <PanelRight className="w-4 h-4" />
+          </button>
         </div>
       </header>
 
@@ -242,23 +268,26 @@ const App: React.FC = () => {
         <PanelGroup orientation="horizontal" style={{ height: '100%', width: '100%' }}>
 
           {/* Left Panel: Chat Sidebar */}
-          <Panel defaultSize={20} minSize={15} className="flex flex-col">
-            <ChatSidebar
-              messages={chatMessages}
-              onSendMessage={handleChatSubmit}
-              onReviewCode={handleReviewClick}
-              isProcessing={isAiProcessing}
-            />
-          </Panel>
-
-          <PanelResizeHandle className="w-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-col-resize z-50" />
+          {!isLeftCollapsed && (
+            <>
+              <Panel defaultSize={20} minSize={15} className="flex flex-col">
+                <ChatSidebar
+                  messages={chatMessages}
+                  onSendMessage={handleChatSubmit}
+                  onReviewCode={handleReviewClick}
+                  isProcessing={isAiProcessing}
+                />
+              </Panel>
+              <PanelResizeHandle className="w-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-col-resize z-50" />
+            </>
+          )}
 
           {/* Middle Panel: Main Content */}
           <Panel defaultSize={60} minSize={30}>
             <PanelGroup orientation="vertical" style={{ height: '100%', width: '100%' }}>
 
               {/* Top: Editor/Plots/Report */}
-              <Panel defaultSize={75} minSize={30}>
+              <Panel defaultSize={70} minSize={30}>
                 <div className="h-full flex flex-col min-w-0 bg-slate-900 border-r border-slate-700">
                   {/* Tabs */}
                   <div className="flex bg-slate-800 border-b border-slate-700 flex-shrink-0">
@@ -301,64 +330,107 @@ const App: React.FC = () => {
                 </div>
               </Panel>
 
-              <PanelResizeHandle className="h-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-row-resize z-50" />
-
-
-
-
-
               {/* Bottom: Command Window / Equation Lab */}
-              <Panel defaultSize={25} minSize={10} className="bg-slate-900 flex flex-col">
-                {/* Bottom Tabs */}
-                <div className="flex bg-slate-800 border-b border-slate-700 flex-shrink-0">
-                  <button
-                    onClick={() => setActiveBottomTab('terminal')}
-                    className={`px-4 py-1.5 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeBottomTab === 'terminal' ? 'bg-slate-900 text-slate-200 border-t-2 border-t-indigo-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
+              {!isBottomCollapsed && (
+                <>
+                  <PanelResizeHandle className="h-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-row-resize z-50" />
+                  <Panel
+                    defaultSize={30}
+                    minSize={10}
+                    className="bg-slate-900 flex flex-col"
                   >
-                    <Terminal className="w-3 h-3" /> Terminal
-                  </button>
-                  <button
-                    onClick={() => setActiveBottomTab('equation')}
-                    className={`px-4 py-1.5 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeBottomTab === 'equation' ? 'bg-slate-900 text-pink-400 border-t-2 border-t-pink-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
-                  >
-                    <Sigma className="w-3 h-3" /> Equation Lab
-                  </button>
-                </div>
+                    {/* Bottom Tabs */}
+                    <div className="flex bg-slate-800 border-b border-slate-700 flex-shrink-0 justify-between items-center pr-2">
+                      <div className="flex">
+                        <button
+                          onClick={() => setActiveBottomTab('terminal')}
+                          className={`px-4 py-1.5 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeBottomTab === 'terminal' ? 'bg-slate-900 text-slate-200 border-t-2 border-t-indigo-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
+                        >
+                          <Terminal className="w-3 h-3" /> Terminal
+                        </button>
+                        <button
+                          onClick={() => setActiveBottomTab('equation')}
+                          className={`px-4 py-1.5 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeBottomTab === 'equation' ? 'bg-slate-900 text-pink-400 border-t-2 border-t-pink-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
+                        >
+                          <Sigma className="w-3 h-3" /> Equation Lab
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => setIsBottomCollapsed(true)}
+                        className="text-slate-400 hover:text-white p-1"
+                        title="Minimize Panel"
+                      >
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
 
-                <div className="flex-grow overflow-hidden relative">
-                  <div className={`absolute inset-0 ${activeBottomTab === 'terminal' ? 'z-10' : 'z-0 invisible'}`}>
-                    <CommandWindow logs={logs} onExecute={handleCommand} />
-                  </div>
-                  <div className={`absolute inset-0 ${activeBottomTab === 'equation' ? 'z-10' : 'z-0 invisible'}`}>
-                    <EquationEditor onInsertCode={handleInsertEquationCode} />
-                  </div>
-                </div>
-              </Panel>
+                    <div className="flex-grow overflow-hidden relative">
+                      <div className={`absolute inset-0 ${activeBottomTab === 'terminal' ? 'z-10' : 'z-0 invisible'}`}>
+                        <CommandWindow logs={logs} onExecute={handleCommand} />
+                      </div>
+                      <div className={`absolute inset-0 ${activeBottomTab === 'equation' ? 'z-10' : 'z-0 invisible'}`}>
+                        <EquationEditor onInsertCode={handleInsertEquationCode} />
+                      </div>
+                    </div>
+                  </Panel>
+                </>
+              )}
 
             </PanelGroup>
           </Panel>
 
-          <PanelResizeHandle className="w-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-col-resize z-50" />
-
           {/* Right Panel: Workspace */}
-          <Panel defaultSize={20} minSize={15} className="flex flex-col bg-slate-800 shadow-xl z-20">
-            <div className="h-full flex flex-col">
-              <div className="px-4 py-3 border-b border-slate-700 bg-slate-800 flex items-center gap-2 flex-shrink-0">
-                <Terminal className="w-4 h-4 text-emerald-400" />
-                <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Workspace</span>
-              </div>
-              <div className="flex-grow overflow-hidden relative bg-slate-900">
-                <WorkspaceViewer
-                  variables={variables}
-                  onClear={handleClearWorkspace}
-                  onDeleteVariable={handleDeleteVariable}
-                />
-              </div>
-            </div>
-          </Panel>
+          {!isRightCollapsed && (
+            <>
+              <PanelResizeHandle className="w-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-col-resize z-50" />
+              <Panel defaultSize={20} minSize={15} className="flex flex-col bg-slate-800 shadow-xl z-20">
+                <div className="h-full flex flex-col">
+                  <div className="px-4 py-3 border-b border-slate-700 bg-slate-800 flex items-center gap-2 flex-shrink-0 justify-between">
+                    <div className="flex items-center gap-2">
+                      <Terminal className="w-4 h-4 text-emerald-400" />
+                      <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Workspace</span>
+                    </div>
+                    <button
+                      onClick={() => setIsRightCollapsed(true)}
+                      className="text-slate-400 hover:text-white"
+                      title="Hide Workspace"
+                    >
+                      <Minimize2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="flex-grow overflow-hidden relative bg-slate-900">
+                    <WorkspaceViewer
+                      variables={variables}
+                      onClear={handleClearWorkspace}
+                      onDeleteVariable={handleDeleteVariable}
+                    />
+                  </div>
+                </div>
+              </Panel>
+            </>
+          )}
 
         </PanelGroup>
       </div>
+
+      {/* Footer Status Bar */}
+      <footer className="h-6 bg-slate-800 border-t border-slate-700 flex items-center px-4 justify-between text-[10px] text-slate-400 shrink-0 z-50 select-none">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setIsBottomCollapsed(!isBottomCollapsed)}
+            className={`flex items-center gap-1.5 hover:text-indigo-400 transition-colors ${!isBottomCollapsed ? 'text-indigo-400 font-medium' : ''}`}
+          >
+            <LayoutTemplate className="w-3 h-3" />
+            {isBottomCollapsed ? 'Show Bottom Panel' : 'Hide Bottom Panel'}
+            {isBottomCollapsed ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
+        </div>
+        <div className="flex items-center gap-4">
+          <span>Ready</span>
+          <span className="text-slate-600">|</span>
+          <span>Calcly IDE v1.0</span>
+        </div>
+      </footer>
     </div>
   );
 };
