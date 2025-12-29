@@ -16,6 +16,8 @@ RUN npm run build
 
 # Expose the port the app runs on
 ENV PORT=8080
+# Optional: Set default API Key (prefer passing this at runtime via -e or Cloud Run secrets)
+# ENV GEMINI_API_KEY=...
 EXPOSE 8080
 
 # Start the application using the server script

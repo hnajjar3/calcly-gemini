@@ -17,7 +17,7 @@ app.use(express.static(path.join(__dirname, 'dist'), { index: false }));
 // Handle SPA routing: serve index.html for all routes, injecting the API Key
 app.get('*', (req, res) => {
   const indexPath = path.join(__dirname, 'dist', 'index.html');
-  
+
   fs.readFile(indexPath, 'utf8', (err, htmlData) => {
     if (err) {
       console.error('Error reading index.html', err);
@@ -25,8 +25,9 @@ app.get('*', (req, res) => {
     }
 
     // Runtime Injection: Get the API key from Cloud Run environment variables
-    const apiKey = process.env.API_KEY || '';
-    
+    // Support both GEMINI_API_KEY (specific) and API_KEY (generic)
+    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || '';
+
     // Inject directly into the pre-defined process shim in index.html
     // We assume window.process.env already exists from index.html's base script
     const envScript = `<script>if (window.process && window.process.env) { window.process.env.API_KEY = "${apiKey}"; }</script>`;
