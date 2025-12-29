@@ -51,6 +51,22 @@ const App: React.FC = () => {
   const [activeBottomTab, setActiveBottomTab] = useState<'terminal' | 'equation'>('terminal');
   const [activeInteraction, setActiveInteraction] = useState<Interaction | null>(null);
 
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) {
+        setIsRightCollapsed(true);
+        setIsLeftCollapsed(true);
+      }
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
 
   const [isBottomCollapsed, setIsBottomCollapsed] = useState(false);
   const [isLeftCollapsed, setIsLeftCollapsed] = useState(false);
@@ -289,158 +305,195 @@ const App: React.FC = () => {
 
       {/* Resizable Layout */}
       <div className="flex-grow flex overflow-hidden">
-        <PanelGroup orientation="horizontal" style={{ height: '100%', width: '100%' }}>
+        {isMobile ? (
+          <PanelGroup orientation="vertical" style={{ height: '100%', width: '100%' }}>
+            {/* Mobile: Editor/Plots */}
+            <Panel defaultSize={40} minSize={20}>
+              <div className="h-full flex flex-col min-w-0 bg-slate-900 border-r border-slate-700">
+                <div className="flex bg-slate-800 border-b border-slate-700 flex-shrink-0">
+                  <button onClick={() => setActiveMainTab('editor')} className={`flex-1 px-4 py-3 text-xs font-bold uppercase ${activeMainTab === 'editor' ? 'text-indigo-400 border-b-2 border-indigo-500' : 'text-slate-500'}`}><FileCode className="w-4 h-4 mx-auto" /></button>
+                  <button onClick={() => setActiveMainTab('plots')} className={`flex-1 px-4 py-3 text-xs font-bold uppercase ${activeMainTab === 'plots' ? 'text-pink-400 border-b-2 border-pink-500' : 'text-slate-500'}`}><Grid className="w-4 h-4 mx-auto" /></button>
+                </div>
+                <div className="flex-grow relative bg-[#1e1e1e]">
+                  <div className={`absolute inset-0 ${activeMainTab === 'editor' ? 'z-10' : 'z-0 invisible'}`}>
+                    <CodeEditor code={code} onChange={(val) => setCode(val || '')} onRun={handleRunCode} />
+                  </div>
+                  <div className={`absolute inset-0 ${activeMainTab === 'plots' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
+                    <PlotViewer plots={plots} theme={theme} activeInteraction={activeInteraction} onUpdateInteraction={handleUpdateInteraction} />
+                  </div>
+                </div>
+              </div>
+            </Panel>
+            <PanelResizeHandle className="h-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-row-resize z-50" />
 
-          {/* Left Panel: Chat Sidebar */}
-          {!isLeftCollapsed && (
-            <>
-              <Panel defaultSize={20} minSize={15} className="flex flex-col">
-                <ChatSidebar
-                  messages={chatMessages}
-                  onSendMessage={handleChatSubmit}
-                  onReviewCode={handleReviewClick}
-                  isProcessing={isAiProcessing}
-                  onClose={() => setIsLeftCollapsed(true)}
-                />
-              </Panel>
-              <PanelResizeHandle className="w-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-col-resize z-50" />
-            </>
-          )}
+            {/* Mobile: Terminal */}
+            <Panel defaultSize={30} minSize={15}>
+              <div className="h-full bg-slate-900 flex flex-col">
+                <div className="px-4 py-2 bg-slate-800 border-b border-slate-700 text-xs font-bold text-slate-400 uppercase">Terminal</div>
+                <div className="flex-grow relative"><CommandWindow logs={logs} onExecute={handleCommand} /></div>
+              </div>
+            </Panel>
+            <PanelResizeHandle className="h-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-row-resize z-50" />
 
-          {/* Middle Panel: Main Content */}
-          <Panel defaultSize={60} minSize={30}>
-            <PanelGroup orientation="vertical" style={{ height: '100%', width: '100%' }}>
+            {/* Mobile: Chat */}
+            <Panel defaultSize={30} minSize={15}>
+              <ChatSidebar messages={chatMessages} onSendMessage={handleChatSubmit} onReviewCode={handleReviewClick} isProcessing={isAiProcessing} />
+            </Panel>
+          </PanelGroup>
+        ) : (
+          <PanelGroup orientation="horizontal" style={{ height: '100%', width: '100%' }}>
 
-              {/* Top: Editor/Plots/Report */}
-              <Panel defaultSize={70} minSize={30}>
-                <div className="h-full flex flex-col min-w-0 bg-slate-900 border-r border-slate-700">
-                  {/* Tabs */}
-                  <div className="flex bg-slate-800 border-b border-slate-700 flex-shrink-0">
-                    <button
-                      onClick={() => setActiveMainTab('editor')}
-                      className={`px-6 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeMainTab === 'editor' ? 'bg-slate-900 text-indigo-400 border-t-2 border-t-indigo-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
-                    >
-                      <FileCode className="w-4 h-4" /> Script Editor
-                    </button>
-                    <button
-                      onClick={() => setActiveMainTab('plots')}
-                      className={`px-6 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeMainTab === 'plots' ? 'bg-slate-900 text-pink-400 border-t-2 border-t-pink-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
-                    >
-                      <Grid className="w-4 h-4" /> Plots {plots.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-pink-500/20 text-pink-400 rounded-full text-[10px]">{plots.length}</span>}
-                    </button>
-                    {/* <button
+            {/* Left Panel: Chat Sidebar */}
+            {!isLeftCollapsed && (
+              <>
+                <Panel defaultSize={20} minSize={15} className="flex flex-col">
+                  <ChatSidebar
+                    messages={chatMessages}
+                    onSendMessage={handleChatSubmit}
+                    onReviewCode={handleReviewClick}
+                    isProcessing={isAiProcessing}
+                    onClose={() => setIsLeftCollapsed(true)}
+                  />
+                </Panel>
+                <PanelResizeHandle className="w-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-col-resize z-50" />
+              </>
+            )}
+
+            {/* Middle Panel: Main Content */}
+            <Panel defaultSize={60} minSize={30}>
+              <PanelGroup orientation="vertical" style={{ height: '100%', width: '100%' }}>
+
+                {/* Top: Editor/Plots/Report */}
+                <Panel defaultSize={70} minSize={30}>
+                  <div className="h-full flex flex-col min-w-0 bg-slate-900 border-r border-slate-700">
+                    {/* Tabs */}
+                    <div className="flex bg-slate-800 border-b border-slate-700 flex-shrink-0">
+                      <button
+                        onClick={() => setActiveMainTab('editor')}
+                        className={`px-6 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeMainTab === 'editor' ? 'bg-slate-900 text-indigo-400 border-t-2 border-t-indigo-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
+                      >
+                        <FileCode className="w-4 h-4" /> Script Editor
+                      </button>
+                      <button
+                        onClick={() => setActiveMainTab('plots')}
+                        className={`px-6 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeMainTab === 'plots' ? 'bg-slate-900 text-pink-400 border-t-2 border-t-pink-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
+                      >
+                        <Grid className="w-4 h-4" /> Plots {plots.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-pink-500/20 text-pink-400 rounded-full text-[10px]">{plots.length}</span>}
+                      </button>
+                      {/* <button
                       onClick={() => setActiveMainTab('report')}
                       className={`px-6 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeMainTab === 'report' ? 'bg-slate-900 text-emerald-400 border-t-2 border-t-emerald-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
                     >
                       <BookOpen className="w-4 h-4" /> Document
                     </button> */}
-                  </div>
+                    </div>
 
-                  {/* Content */}
-                  <div className="flex-grow relative bg-[#1e1e1e]">
-                    <div className={`absolute inset-0 ${activeMainTab === 'editor' ? 'z-10' : 'z-0 invisible'}`}>
-                      <CodeEditor
-                        code={code}
-                        onChange={(val) => setCode(val || '')}
-                        onRun={handleRunCode}
-                      />
-                    </div>
-                    <div className={`absolute inset-0 ${activeMainTab === 'plots' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
-                      <PlotViewer
-                        plots={plots}
-                        theme={theme}
-                        activeInteraction={activeInteraction}
-                        onUpdateInteraction={handleUpdateInteraction}
-                      />
-                    </div>
-                    {/* <div className={`absolute inset-0 ${activeMainTab === 'report' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
+                    {/* Content */}
+                    <div className="flex-grow relative bg-[#1e1e1e]">
+                      <div className={`absolute inset-0 ${activeMainTab === 'editor' ? 'z-10' : 'z-0 invisible'}`}>
+                        <CodeEditor
+                          code={code}
+                          onChange={(val) => setCode(val || '')}
+                          onRun={handleRunCode}
+                        />
+                      </div>
+                      <div className={`absolute inset-0 ${activeMainTab === 'plots' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
+                        <PlotViewer
+                          plots={plots}
+                          theme={theme}
+                          activeInteraction={activeInteraction}
+                          onUpdateInteraction={handleUpdateInteraction}
+                        />
+                      </div>
+                      {/* <div className={`absolute inset-0 ${activeMainTab === 'report' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
                       <ReportViewer markdown={reportMarkdown} />
                     </div> */}
+                    </div>
                   </div>
-                </div>
-              </Panel>
+                </Panel>
 
-              {/* Bottom: Command Window / Equation Lab */}
-              {!isBottomCollapsed && (
-                <>
-                  <PanelResizeHandle className="h-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-row-resize z-50" />
-                  <Panel
-                    defaultSize={30}
-                    minSize={10}
-                    className="bg-slate-900 flex flex-col"
-                  >
-                    {/* Bottom Tabs */}
-                    <div className="flex bg-slate-800 border-b border-slate-700 flex-shrink-0 justify-between items-center pr-2">
-                      <div className="flex">
+                {/* Bottom: Command Window / Equation Lab */}
+                {!isBottomCollapsed && (
+                  <>
+                    <PanelResizeHandle className="h-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-row-resize z-50" />
+                    <Panel
+                      defaultSize={30}
+                      minSize={10}
+                      className="bg-slate-900 flex flex-col"
+                    >
+                      {/* Bottom Tabs */}
+                      <div className="flex bg-slate-800 border-b border-slate-700 flex-shrink-0 justify-between items-center pr-2">
+                        <div className="flex">
+                          <button
+                            onClick={() => setActiveBottomTab('terminal')}
+                            className={`px-4 py-1.5 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeBottomTab === 'terminal' ? 'bg-slate-900 text-slate-200 border-t-2 border-t-indigo-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
+                          >
+                            <Terminal className="w-3 h-3" /> Terminal
+                          </button>
+                          <button
+                            onClick={() => setActiveBottomTab('equation')}
+                            className={`px-4 py-1.5 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeBottomTab === 'equation' ? 'bg-slate-900 text-pink-400 border-t-2 border-t-pink-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
+                          >
+                            <Sigma className="w-3 h-3" /> Equation Lab
+                          </button>
+                        </div>
                         <button
-                          onClick={() => setActiveBottomTab('terminal')}
-                          className={`px-4 py-1.5 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeBottomTab === 'terminal' ? 'bg-slate-900 text-slate-200 border-t-2 border-t-indigo-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
+                          onClick={() => setIsBottomCollapsed(true)}
+                          className="text-slate-400 hover:text-white p-1"
+                          title="Minimize Panel"
                         >
-                          <Terminal className="w-3 h-3" /> Terminal
+                          <ChevronDown className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          onClick={() => setActiveBottomTab('equation')}
-                          className={`px-4 py-1.5 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeBottomTab === 'equation' ? 'bg-slate-900 text-pink-400 border-t-2 border-t-pink-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
-                        >
-                          <Sigma className="w-3 h-3" /> Equation Lab
-                        </button>
+                      </div>
+
+                      <div className="flex-grow overflow-hidden relative">
+                        <div className={`absolute inset-0 ${activeBottomTab === 'terminal' ? 'z-10' : 'z-0 invisible'}`}>
+                          <CommandWindow logs={logs} onExecute={handleCommand} />
+                        </div>
+                        <div className={`absolute inset-0 ${activeBottomTab === 'equation' ? 'z-10' : 'z-0 invisible'}`}>
+                          <EquationEditor onInsertCode={handleInsertEquationCode} />
+                        </div>
+                      </div>
+                    </Panel>
+                  </>
+                )}
+
+              </PanelGroup>
+            </Panel>
+
+            {/* Right Panel: Workspace */}
+            {!isRightCollapsed && (
+              <>
+                <PanelResizeHandle className="w-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-col-resize z-50" />
+                <Panel defaultSize={20} minSize={15} className="flex flex-col bg-slate-800 shadow-xl z-20">
+                  <div className="h-full flex flex-col">
+                    <div className="px-4 py-3 border-b border-slate-700 bg-slate-800 flex items-center gap-2 flex-shrink-0 justify-between">
+                      <div className="flex items-center gap-2">
+                        <Terminal className="w-4 h-4 text-emerald-400" />
+                        <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Workspace</span>
                       </div>
                       <button
-                        onClick={() => setIsBottomCollapsed(true)}
-                        className="text-slate-400 hover:text-white p-1"
-                        title="Minimize Panel"
+                        onClick={() => setIsRightCollapsed(true)}
+                        className="text-slate-400 hover:text-white"
+                        title="Hide Workspace"
                       >
-                        <ChevronDown className="w-3.5 h-3.5" />
+                        <Minimize2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
-
-                    <div className="flex-grow overflow-hidden relative">
-                      <div className={`absolute inset-0 ${activeBottomTab === 'terminal' ? 'z-10' : 'z-0 invisible'}`}>
-                        <CommandWindow logs={logs} onExecute={handleCommand} />
-                      </div>
-                      <div className={`absolute inset-0 ${activeBottomTab === 'equation' ? 'z-10' : 'z-0 invisible'}`}>
-                        <EquationEditor onInsertCode={handleInsertEquationCode} />
-                      </div>
+                    <div className="flex-grow overflow-hidden relative bg-slate-900">
+                      <WorkspaceViewer
+                        variables={variables}
+                        onClear={handleClearWorkspace}
+                        onDeleteVariable={handleDeleteVariable}
+                      />
                     </div>
-                  </Panel>
-                </>
-              )}
-
-            </PanelGroup>
-          </Panel>
-
-          {/* Right Panel: Workspace */}
-          {!isRightCollapsed && (
-            <>
-              <PanelResizeHandle className="w-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-col-resize z-50" />
-              <Panel defaultSize={20} minSize={15} className="flex flex-col bg-slate-800 shadow-xl z-20">
-                <div className="h-full flex flex-col">
-                  <div className="px-4 py-3 border-b border-slate-700 bg-slate-800 flex items-center gap-2 flex-shrink-0 justify-between">
-                    <div className="flex items-center gap-2">
-                      <Terminal className="w-4 h-4 text-emerald-400" />
-                      <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Workspace</span>
-                    </div>
-                    <button
-                      onClick={() => setIsRightCollapsed(true)}
-                      className="text-slate-400 hover:text-white"
-                      title="Hide Workspace"
-                    >
-                      <Minimize2 className="w-3.5 h-3.5" />
-                    </button>
                   </div>
-                  <div className="flex-grow overflow-hidden relative bg-slate-900">
-                    <WorkspaceViewer
-                      variables={variables}
-                      onClear={handleClearWorkspace}
-                      onDeleteVariable={handleDeleteVariable}
-                    />
-                  </div>
-                </div>
-              </Panel>
-            </>
-          )}
+                </Panel>
+              </>
+            )}
 
-        </PanelGroup>
+          </PanelGroup>
+        )}
       </div>
 
       {/* Footer Status Bar */}
