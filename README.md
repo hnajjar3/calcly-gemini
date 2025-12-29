@@ -1,83 +1,106 @@
-# Calcly - Open Source AI Computational Engine
+# Calcly IDE
 
-Calcly is an **open-source**, AI-powered computational knowledge engine inspired by Wolfram Alpha. It leverages Google's Gemini models to solve complex math, physics, coding, and general knowledge queries, complete with symbolic computation and data visualizations.
+# Calcly IDE
 
-## Features
+**The AI-First Math Engine for the Modern Web.**
 
-- **Natural Language Solving**: Ask complex questions in plain English.
-- **Symbolic Math Engine**: Dedicated interface for exact calculus, linear algebra, and symbolic manipulation using Nerdamer and Algebrite.
-- **Data Visualization**: Auto-generated interactive charts for statistical data.
-- **Multimodal Input**: Support for image analysis and voice queries.
-- **Dual Mode**: Switch between **Pro** (Reasoning, Gemini 3) and **Flash** (Speed, Gemini 2.5).
-- **Open Source**: Now available for the community to explore and extend.
+Calcly is a modern, React-based numerical and symbolic math solver designed for the modern user. It reimagines the computational experience by putting **AI First**, while giving you the full power of an **IDE** to review, edit, and understand the code before it runs.
+
+## 💡 The Vision
+
+We believe powerful tools shouldn't require powerful hardware or complex setups.
+
+-   **Any Device, Anywhere**: Whether you are on a high-end workstation, a **Chromebook**, or an **iPad**, Calcly delivers a full desktop-class coding environment right in your browser. No installations. No config hell. Just open the link and solve.
+-   **AI with Oversight**: Chatbots are great, but can you trust their math? Calcly solves this by treating AI as a *drafting tool*. The AI writes the script, but **you** sit in the pilot's seat—reviewing the code in the editor, making tweaks, and executing it only when you're ready.
+-   **Numerical & Symbolic Power**: Seamlessly switch between exact symbolic algebra (like simplifying equations) and heavy numerical crunching (like processing datasets), all within a reactive, modern interface.
+
+## 🌟 Key Features
+
+### 1. The Workbench
+-   **Code Editor**: Monaco-based editor (VS Code engine) with syntax highlighting and auto-completion.
+-   **Command Window**: READ-EVAL-PRINT-LOOP (REPL) for quick calculations (`>> 1 + 1`).
+-   **Workspace Viewer**: Real-time inspection of all active variables (scalars, arrays, objects).
+-   **Plot Viewer**: Dedicated tab for interactive Plotly charts generated from your code.
+
+### 2. Equation Lab
+-   **Visual Math**: Type equations using a visual LaTeX editor (MathLive).
+-   **Native Compilation**: Uses **CortexJS Compute Engine** to compile math formulas directly into executable JavaScript code.
+-   **One-Click Insert**: seamless injection of math logic into your scripts.
+
+### 3. AI Copilot
+-   **Natural Language Coding**: Ask the AI: *"Generate a 3D surface plot of a damped sine wave"* and watch it write the code.
+-   **Code Review**: One-click auditing of your scripts for bugs and optimizations.
+-   **Scientific Publishing**: One-click generation of professional markdown reports from your code and results.
+
+### 4. Hybrid Math Engine
+-   **Numerical**: Powered by `math.js`.
+-   **Symbolic**: Powered by `nerdamer` and `Algebrite` for algebra and calculus.
+-   **Auto Mode**: The AI intelligently routes tasks to the best engine.
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
+-   Node.js v18+
+-   Google Gemini API Key
 
-- [Node.js](https://nodejs.org/) (v18 or higher)
-- A Google Cloud Project or Google AI Studio account.
+### Installation
 
-### 1. Installation
+1.  **Clone the repo**
+    ```bash
+    git clone https://github.com/yourusername/calcly-ide.git
+    cd calcly-ide
+    ```
 
-Clone the repository and install dependencies:
+2.  **Install Dependencies**
+    ```bash
+    npm install
+    ```
 
-```bash
-npm install
-```
+3.  **Configure API Key**
+    Create a `.env` file in the root:
+    ```env
+    API_KEY=your_gemini_api_key_here
+    # Optional: Use specific key variable
+    GEMINI_API_KEY=your_gemini_api_key_here
+    ```
 
-### 2. API Key Configuration
-
-You need a Google Gemini API Key to run this application.
-
-1. Get an API key from [Google AI Studio](https://aistudiocdn.com/app/apikey).
-2. Create a file named `.env` in the root directory of the project.
-3. Add your key to the file:
-
-```env
-API_KEY=your_gemini_api_key_starts_with_AIza...
-```
-
-**Demo Mode Fallback**: 
-If you do not provide an `.env` file, the application is configured to run in **Demo Mode** using a placeholder key found in `services/geminiService.ts`. 
-*Note: The default demo key is a placeholder (`AIzaSy_DEMO_KEY_PLACEHOLDER...`). You must replace it with a valid key for the app to function correctly.*
-
-> **Security Note**: The `.env` file is git-ignored to prevent leaking your key. Do not commit it to version control.
-
-### 3. Running Locally
-
-**Development Mode (Recommended)**
-This runs Vite with hot-reloading. The API key from your `.env` file is automatically injected.
-
-```bash
-npm run dev
-```
-Open [http://localhost:5173](http://localhost:5173) in your browser.
-
-**Production Build Preview**
-To test the actual server setup (which mimics the Cloud Run deployment):
-
-```bash
-npm run build
-npm start
-```
-Open [http://localhost:8080](http://localhost:8080) in your browser.
+4.  **Run Locally**
+    ```bash
+    npm run dev
+    ```
+    Access at `http://localhost:5173`.
 
 ---
 
-## ☁️ Deployment (Google Cloud Run)
+## ☁️ Production Deployment
 
-This application uses a **Runtime Environment Injection** strategy for deployment. This allows you to build the Docker image once and deploy it to different environments with different API keys.
+Calcly is designed for containerized deployment (e.g., Google Cloud Run).
 
-1. **Deploy to Cloud Run** normally (via gcloud or console).
-2. **Set the Environment Variable** in Cloud Run:
-   - Go to your Cloud Run Service.
-   - Click "Edit & Deploy New Revision".
-   - Under "Variables & Secrets", add:
-     - Name: `API_KEY`
-     - Value: `[Your Actual Key]`
-3. **Deploy**.
+### Docker Build
+```bash
+docker build -t calcly-ide .
+docker run -p 8080:8080 -e GEMINI_API_KEY=your_key calcly-ide
+```
 
-The `server.js` file automatically reads this environment variable and injects it into the React app when serving `index.html`.
+### Runtime Environment Injection
+Calcly uses a robust injection strategy to support "Build Once, Deploy Anywhere":
+1.  **Server-Side**: `server.js` reads `GEMINI_API_KEY` (or `API_KEY`) from the container environment.
+2.  **Injection**: It injects this key into a global `window.GEMINI_API_KEY` variable in `index.html` at runtime.
+3.  **Client-Side**: The app prioritizes this global variable, bypassing any build-time hardcoded values.
+
+---
+
+## 🛠️ Architecture Overview
+
+-   **Frontend**: React 19 + TypeScript + Vite.
+-   **Layout**: `react-resizable-panels` for the dockable interface.
+-   **Runtime**: Ephemeral `iframe`-based sandbox for safe user code execution.
+-   **Math Core**:
+    -   `@cortex-js/compute-engine` (Parsing/Compilation)
+    -   `mathlive` (UI)
+    -   `plotly.js` (Visualization)
+
+## License
+MIT
