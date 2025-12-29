@@ -1,13 +1,16 @@
 import React from 'react';
 import Plot from 'react-plotly.js';
-import { PlotData } from '../lib/runtime';
+import { PlotData, Interaction } from '../lib/runtime';
+import { InteractiveControls } from './InteractiveControls';
 
 interface PlotViewerProps {
     plots: PlotData[];
     theme: 'light' | 'dark';
+    activeInteraction?: Interaction | null;
+    onUpdateInteraction?: (id: string, values: Record<string, number>) => void;
 }
 
-export const PlotViewer: React.FC<PlotViewerProps> = ({ plots, theme }) => {
+export const PlotViewer: React.FC<PlotViewerProps> = ({ plots, theme, activeInteraction, onUpdateInteraction }) => {
     if (plots.length === 0) {
         return (
             <div className="h-full w-full flex items-center justify-center bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 text-slate-400">
@@ -98,6 +101,15 @@ export const PlotViewer: React.FC<PlotViewerProps> = ({ plots, theme }) => {
                 <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Plots</span>
                 <span className="text-xs text-slate-400">Plot {plots.length}</span>
             </div>
+
+            {/* Interactive Controls Panel */}
+            {activeInteraction && onUpdateInteraction && (
+                <InteractiveControls
+                    interaction={activeInteraction}
+                    onUpdate={onUpdateInteraction}
+                />
+            )}
+
             <div className="flex-grow relative min-h-0">
                 <Plot
                     data={latestPlot.data}

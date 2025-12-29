@@ -17,6 +17,19 @@ interface RuntimeContext {
     [key: string]: any; // Allow user variables
 }
 
+export interface ControlDef {
+    min: number;
+    max: number;
+    value: number;
+    step?: number;
+    label?: string;
+}
+
+export interface Interaction {
+    id: string;
+    controls: Record<string, ControlDef>;
+}
+
 export type VariableValue = any;
 
 export interface Variable {
@@ -30,6 +43,7 @@ export interface PlotData {
     data: any[];
     layout: any;
     timestamp: number;
+    interactionId?: string; // Link plot to interaction
 }
 
 export type LogType = 'log' | 'error' | 'warn' | 'info';
@@ -46,6 +60,9 @@ class Runtime {
     private onPlot: (plot: PlotData) => void = () => { };
     private onLog: (entry: LogEntry) => void = () => { };
     private onVariablesUpdate: (variables: Variable[]) => void = () => { };
+    private onInteract: (interaction: Interaction) => void = () => { };
+
+    private interactionCallbacks: Record<string, Function> = {};
 
     constructor() {
         this.reset();
@@ -54,11 +71,24 @@ class Runtime {
     public setCallbacks(
         onPlot: (plot: PlotData) => void,
         onLog: (entry: LogEntry) => void,
-        onVariablesUpdate: (variables: Variable[]) => void
+        onVariablesUpdate: (variables: Variable[]) => void,
+        onInteract: (interaction: Interaction) => void
     ) {
         this.onPlot = onPlot;
         this.onLog = onLog;
         this.onVariablesUpdate = onVariablesUpdate;
+        this.onInteract = onInteract;
+    }
+
+    public updateInteraction(id: string, values: Record<string, number>) {
+        const callback = this.interactionCallbacks[id];
+        if (callback) {
+            try {
+                callback(values);
+            } catch (e: any) {
+                this.onLog({ id: uuidv4(), type: 'error', message: `Interaction Error: ${e.message}`, timestamp: Date.now() });
+            }
+        }
     }
 
     public reset() {
@@ -190,6 +220,35 @@ class Runtime {
     private async executeInIframe(code: string, plot: any, safeLog: any) {
         if (!this.iframe) this.initIframe();
         const win = this.iframe!.contentWindow as any;
+
+        // Define interact function in the iframe scope
+        win.interact = (controls: Record<string, ControlDef>, callback: Function) => {
+            const id = uuidv4();
+            this.interactionCallbacks[id] = callback;
+
+            // Notify UI to render controls
+            this.onInteract({ id, controls });
+
+            // Execute immediately with initial values to generate first plot
+            // We need to extract initial values from the ControlDef
+            const initialValues: Record<string, number> = {};
+            for (const key in controls) {
+                initialValues[key] = controls[key].value;
+            }
+
+            // Wrap the callback to inject the interaction ID into any plots generated
+            // This is a bit tricky since 'plot' is global. We might need to set a context.
+            // For now, simpler approach: The user calls plot inside the callback.
+            // We can't easily adhere the ID to the plot unless we change win.plot dynamically.
+
+            // Execute callback with initial values
+            try {
+                callback(initialValues);
+            } catch (e: any) {
+                safeLog('error', `Interaction Init Error: ${e.message}`);
+            }
+        };
+
         win.plot = plot;
         win.print = (...args: any[]) => safeLog('log', ...args);
 
@@ -222,7 +281,7 @@ class Runtime {
     }
 
     private harvestVariables(win: any, code: string) {
-        const injected = new Set(['plot', 'print', 'math', 'nerdamer', 'Algebrite', 'console']);
+        const injected = new Set(['plot', 'print', 'math', 'nerdamer', 'Algebrite', 'console', 'interact']);
         const vars: Record<string, any> = {};
         const currentKeys = Object.getOwnPropertyNames(win);
 

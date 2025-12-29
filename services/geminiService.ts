@@ -63,6 +63,7 @@ export const generateCodeFromPrompt = async (query: string, previousCode?: strin
             - Available globals: 
                 - 'Math', 'Date', 'console'
                 - 'plot(data, layout)' (Plotly.js)
+                - 'interact(controls, callback)' (Interactive Plots)
                 - 'math' (Math.js) - Use for Numerical Mode
                 - 'nerdamer' (Nerdamer) - Use for Symbolic Algebra/Solving
                 - 'Algebrite' (Algebrite) - Use for Symbolic Evaluation/CAS
@@ -91,6 +92,16 @@ export const generateCodeFromPrompt = async (query: string, previousCode?: strin
                     const f = (val) => 2 * val; 
                     // Plot loop...
                     \`
+            - IF USER ASKS FOR INTERACTIVE PLOTS:
+                - Use 'interact({ param: { min, max, value, step } }, (values) => { ... plot(...) })'.
+                - Example:
+                  \`
+                  interact({ f: { min: 1, max: 10, value: 5 } }, ({ f }) => {
+                    const x = []; const y = [];
+                    for(let i=0; i<100; i++) { x.push(i/10); y.push(Math.sin(f * i/10)); }
+                    plot([{x, y}]);
+                  });
+                  \`
             
             Output JSON ONLY.`;
 

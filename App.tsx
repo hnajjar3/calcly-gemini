@@ -26,7 +26,7 @@ import { WorkspaceViewer } from './components/WorkspaceViewer';
 import { PlotViewer } from './components/PlotViewer';
 import { ReportViewer } from './components/ReportViewer';
 import { ChatSidebar } from './components/ChatSidebar';
-import { runtime, LogEntry, Variable, PlotData } from './lib/runtime';
+import { runtime, LogEntry, Variable, PlotData, Interaction } from './lib/runtime';
 import { generateReport, generateCodeFromPrompt } from './services/geminiService';
 
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
@@ -49,6 +49,7 @@ const App: React.FC = () => {
   const [mathMode, setMathMode] = useState<'numerical' | 'symbolic' | 'auto'>('auto');
   const [chatMessages, setChatMessages] = useState<{ id: string, sender: 'user' | 'ai', text: string, timestamp: number }[]>([]);
   const [activeBottomTab, setActiveBottomTab] = useState<'terminal' | 'equation'>('terminal');
+  const [activeInteraction, setActiveInteraction] = useState<Interaction | null>(null);
 
 
   const [isBottomCollapsed, setIsBottomCollapsed] = useState(false);
@@ -76,12 +77,20 @@ const App: React.FC = () => {
       },
       (vars) => {
         setVariables(vars);
+      },
+      (interaction) => {
+        setActiveInteraction(interaction);
+        setActiveMainTab('plots');
       }
     );
 
     // Initial sync
     runtime.execute('');
   }, []);
+
+  const handleUpdateInteraction = (id: string, values: Record<string, number>) => {
+    runtime.updateInteraction(id, values);
+  };
 
   const toggleTheme = () => {
     setTheme(prev => {
@@ -336,7 +345,12 @@ const App: React.FC = () => {
                       />
                     </div>
                     <div className={`absolute inset-0 ${activeMainTab === 'plots' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
-                      <PlotViewer plots={plots} theme={theme} />
+                      <PlotViewer
+                        plots={plots}
+                        theme={theme}
+                        activeInteraction={activeInteraction}
+                        onUpdateInteraction={handleUpdateInteraction}
+                      />
                     </div>
                     {/* <div className={`absolute inset-0 ${activeMainTab === 'report' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
                       <ReportViewer markdown={reportMarkdown} />
