@@ -276,6 +276,7 @@ const App: React.FC = () => {
                   onSendMessage={handleChatSubmit}
                   onReviewCode={handleReviewClick}
                   isProcessing={isAiProcessing}
+                  onClose={() => setIsLeftCollapsed(true)}
                 />
               </Panel>
               <PanelResizeHandle className="w-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-col-resize z-50" />

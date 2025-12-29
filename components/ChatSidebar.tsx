@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, Code2 } from 'lucide-react';
+import { Send, Bot, User, Code2, Minimize2 } from 'lucide-react';
 
 interface Message {
     id: string;
@@ -12,10 +12,11 @@ interface ChatSidebarProps {
     messages: Message[];
     onSendMessage: (text: string, images?: string[]) => void;
     onReviewCode: () => void;
+    onClose?: () => void;
     isProcessing: boolean;
 }
 
-export const ChatSidebar: React.FC<ChatSidebarProps> = ({ messages, onSendMessage, onReviewCode, isProcessing }) => {
+export const ChatSidebar: React.FC<ChatSidebarProps> = ({ messages, onSendMessage, onReviewCode, onClose, isProcessing }) => {
     const [input, setInput] = useState('');
     const [isRecording, setIsRecording] = useState(false);
     const [selectedImage, setSelectedImage] = useState<string | null>(null); // Base64 string
@@ -79,9 +80,20 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ messages, onSendMessag
         <div className="flex flex-col h-full bg-slate-800 border-r border-slate-700 w-full">
             {/* Header */}
             <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
-                <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider flex items-center gap-2">
-                    <Bot className="w-4 h-4 text-indigo-400" /> AI Assistant
-                </h2>
+                <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                        <Bot className="w-4 h-4 text-indigo-400" /> AI Assistant
+                    </h2>
+                    {onClose && (
+                        <button
+                            onClick={onClose}
+                            className="text-slate-500 hover:text-slate-300 transition-colors p-1"
+                            title="Hide Chat Sidebar"
+                        >
+                            <Minimize2 className="w-3.5 h-3.5" />
+                        </button>
+                    )}
+                </div>
                 <button
                     onClick={onReviewCode}
                     disabled={isProcessing}
