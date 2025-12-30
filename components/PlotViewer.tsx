@@ -1,7 +1,13 @@
 import { forwardRef, useImperativeHandle, useRef } from 'react';
-import Plot from 'react-plotly.js';
+import createPlotlyComponent from 'react-plotly.js/factory';
+import Plotly from 'plotly.js'; // Use main package
 import { PlotData, Interaction } from '../lib/runtime';
 import { InteractiveControls } from './InteractiveControls';
+
+// Create the plot component with the specific Plotly instance
+// This ensures we have full access to the library internals for image capture
+// @ts-ignore: Ref definition mismatch workaround
+const Plot = createPlotlyComponent(Plotly) as any;
 
 export interface PlotViewerHandle {
     getPlotImage: () => Promise<string | null>;
@@ -21,60 +27,61 @@ export const PlotViewer = forwardRef<PlotViewerHandle, PlotViewerProps>(({ plots
         getPlotImage: async () => {
             if (!plotRef.current || plots.length === 0) return null;
             try {
-                // Access the underlying Plotly object through the react-plotly.js ref
-                // The library exposes 'el' property or we can use plot component instance method if available
-                // react-plotly.js uses 'editor' property for accesses or we can use Plotly library method on the element
-                // But the easiest way provided by react-plotly.js is usually accessing the el property or using standard Plotly.toImage
-
-                // Better approach: Usage of the library's `toImage` utility on the graph div.
-                // However, react-plotly.js component ref has direct methods? No, it wraps the div.
-                // Let's rely on standard Plotly.toImage if we can getting the node.
-                // Actually the simplest for react-plotly is usually:
-                // const graphDiv = plotRef.current.el;
-                // return await Plotly.toImage(graphDiv, {format: 'png', height: 600, width: 800});
-
-                // We need to import Plotly to do that? 'react-plotly.js' bundles it but doesn't easily export the static `toImage` method 
-                // unless we import 'plotly.js' separately or use the instance.
-                // Ah, the instance `plotRef.current` likely exposes `el` which is the DOM node.
-                // But we don't have global `Plotly` variable. 
-                // Wait, `react-plotly.js` creates a `Plot` component. 
-
-                // Let's try to get the node and use the window.Plotly (injected in index.html) or just assume valid ref.
-                // Actually, since we don't import Plotly directly here (it's in Runtime via CDN), we might not have it in module scope.
-                // But `index.html` loads it globally? Wait, no, `PlotViewer` uses `import Plot from 'react-plotly.js'`.
-                // That imports a bundled version. 
-
-                // Let's traverse the ref properly. 
+                // With factory pattern, we own the Plotly instance.
+                // plotRef.current gives us the component instance.
+                // The underlying DOM node is at plotRef.current.el
                 const graphDiv = plotRef.current?.el;
-                if (!graphDiv) return null;
 
-                // Use the globally exposed Plotly if available (since we saw it in index.html?), 
-                // OR simpler: react-plotly.js ref might not expose `toImage`.
-                // BUT, standard Plotly.toImage(graphDiv) is the standard way.
-                // Is `Plotly` global? Yes, we saw `window.Plotly` or similar in `index.html`? 
-                // No, index.html loaded `nerdamer`, `algebrite`, `mathjs` but NOT plotly CDN. 
-                // `package.json` has `plotly.js` and `react-plotly.js`.
-                // So `react-plotly.js` bundles it.
+                if (!graphDiv) {
+                    console.error("Plot div not found");
+                    return null;
+                }
 
-                // We can import the static method from plotly.js if we installed it.
-                // Let's try dynamic import or just use the global if it exists which it might not.
+                // 1. Force Light Mode for Capture (White Background, Black Text)
+                // This ensures the plot looks good on the white report paper.
+                const captureLayout = {
+                    'paper_bgcolor': '#ffffff',
+                    'plot_bgcolor': '#ffffff',
+                    'font.color': '#000000',
+                    'xaxis.gridcolor': '#e2e8f0',
+                    'yaxis.gridcolor': '#e2e8f0',
+                    'xaxis.color': '#000000', // Axis labels/ticks
+                    'yaxis.color': '#000000',
+                    'title.font.color': '#000000'
+                };
 
-                // Safe bet: Import Plotly from 'plotly.js' to use `toImage`.
-                // But that increases bundle size? It's already there for the component.
-                // Let's try:
-                // const Plotly = (await import('plotly.js-dist-min')).default;
-                // package.json has "plotly.js".
-                const { toImage } = await import('plotly.js');
-                return await toImage(graphDiv, { format: 'png', width: 800, height: 600 });
+                // Use the explicit Plotly instance
+                // This works because we are using the SAME instance that created the component
+                await Plotly.relayout(graphDiv, captureLayout);
+
+                // 2. Capture Image
+                // We add a small delay to ensure render cycle catches up
+                await new Promise(r => setTimeout(r, 50));
+                const image = await Plotly.toImage(graphDiv, { format: 'png', width: 800, height: 600 });
+
+                // 3. Restore Original Theme
+                // If we are in dark mode, we must revert. If light, we are mostly fine but good to be explicit.
+                if (theme === 'dark') {
+                    const restoreLayout = {
+                        'paper_bgcolor': 'transparent',
+                        'plot_bgcolor': 'transparent',
+                        'font.color': '#ffffff',
+                        'xaxis.gridcolor': '#334155',
+                        'yaxis.gridcolor': '#334155',
+                        'xaxis.color': '#ffffff',
+                        'yaxis.color': '#ffffff',
+                        'title.font.color': '#ffffff'
+                    };
+                    await Plotly.relayout(graphDiv, restoreLayout);
+                }
+
+                return image;
             } catch (e) {
                 console.error("Failed to capture plot image", e);
                 return null;
             }
         }
     }));
-
-    // ... (rest of render)
-    // Update Plot component: ref={plotRef}
 
     if (plots.length === 0) {
         return (
@@ -157,9 +164,6 @@ export const PlotViewer = forwardRef<PlotViewerHandle, PlotViewerProps>(({ plots
             : (userLayout.title ? { text: userLayout.title, font: { color: textColor, size: 18 } } : defaultLayout.title)
     };
 
-    // Debugging: Check what is actually being rendered
-    console.log("PlotViewer Merged Layout:", mergedLayout);
-
     return (
         <div className="h-full w-full flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 overflow-hidden">
             <div className="px-4 py-2 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shrink-0">
@@ -187,4 +191,4 @@ export const PlotViewer = forwardRef<PlotViewerHandle, PlotViewerProps>(({ plots
             </div>
         </div>
     );
-}); // Close the forwardRef correctly
+});

@@ -99,52 +99,71 @@ export const ReportViewer: React.FC<ReportViewerProps> = ({ markdown, onChange }
 
             {/* Scrollable Content Area */}
             <div className="flex-grow overflow-auto flex justify-center items-start p-8 print:p-0 print:block">
-                {/* Print Styles Injection */}
+                /* Print Styles Injection */
                 <style>{`
                     @media print {
                         @page { size: auto; margin: 20mm; } 
 
-                        /* Force White Background Everywhere */
-                        html, body, #root, html.dark, body.dark {
-                            background-color: white !important;
-                            color: black !important;
-                            visibility: hidden;
-                            height: auto !important;
-                            overflow: visible !important;
-                        }
-                        
-                        /* Hide everything by default */
-                        body * { visibility: hidden; }
-
-                        /* Show the print target */
-                        .print-target, .print-target * { 
-                            visibility: visible; 
-                        }
-
-                        .print-target { 
-                            position: absolute; 
-                            left: 0; 
-                            top: 0; 
-                            width: 100% !important; 
-                            margin: 0 !important; 
-                            padding: 0 !important;
-                            
-                            /* Ensure it behaves like a normal document flow for pagination */
-                            display: block !important;
+                        /* 1. RESET EVERYTHING: Ensure full page scrolling/overflow is possible */
+                        html, body, #root {
                             height: auto !important;
                             min-height: 100vh !important;
                             overflow: visible !important;
-                            
-                            box-shadow: none !important;
+                            overflow-y: visible !important;
+                            width: 100% !important;
+                            margin: 0 !important;
+                            padding: 0 !important;
                             background-color: white !important;
-                            color: black !important;
                         }
 
-                        /* Page break controls */
-                        h1, h2, h3 { break-after: avoid; }
-                        p, pre, blockquote, ul, ol, .katex-display { break-inside: avoid; }
+                        /* 2. Hide everything by default (the app UI) */
+                        body * {
+                            display: none !important;
+                        }
+
+                        /* 3. Make the Print Target Visible & Flow Correctly */
+                        /* We must select the target and ALL its descendants */
+                        .print-target, .print-target * {
+                            display: block !important;
+                            visibility: visible !important;
+                            color: black !important;
+                        }
                         
-                        /* Correct Math Colors */
+                        /* Restore flex/grid for inner elements if needed, but 'block' is safest for the main wrapper */
+                        .print-target article {
+                            display: block !important;
+                        }
+                        
+                        /* Specific display overrides for inner elements */
+                        .print-target img { display: inline-block !important; }
+                        .print-target span { display: inline !important; }
+                        .print-target p { display: block !important; }
+                        .print-target .katex-display { display: block !important; }
+
+                        /* 4. Position the Print Target at the very top */
+                        .print-target {
+                            position: absolute !important;
+                            top: 0 !important;
+                            left: 0 !important;
+                            width: 100% !important;
+                            margin: 0 !important;
+                            padding: 0 !important;
+                            
+                            /* Critical for multi-page: Allow height to grow indefinitely */
+                            height: auto !important;
+                            overflow: visible !important;
+                            
+                            /* Reset shadows/bg */
+                            box-shadow: none !important;
+                            background: white !important;
+                        }
+
+                        /* 5. Pagination Controls */
+                        h1, h2, h3 { break-after: avoid; page-break-after: avoid; }
+                        p, pre, blockquote, ul, ol, .katex-display { break-inside: avoid; page-break-inside: avoid; }
+                        img { break-inside: avoid; page-break-inside: avoid; max-width: 100% !important; }
+
+                        /* Math styling adjustments for print */
                         .katex { color: black !important; }
                     }
                 `}</style>

@@ -188,24 +188,34 @@ const App: React.FC = () => {
   const handlePublish = async () => {
     if (isPublishing) return;
     setIsPublishing(true);
-    setActiveMainTab('report');
-    // Show loading state in markdown temporarily
-    setReportMarkdown('# Generating Report...\n\nPlease wait while the AI analyzes your code, results, and plots to generate a scientific report.');
 
     try {
-      // Serialize logs and variables for context
-      const logsText = logs.slice(-20).map(l => `[${l.type}] ${l.message}`).join('\n');
-      const varsText = variables.map(v => `${v.name} = ${v.value}`).join('\n');
-
-      // Capture plot image if available
+      // 1. Capture plot image FIRST while it is still potentially visible/active
+      // (This prevents issues where hiding the tab might clear the canvas or ref behavior)
       let plotImage: string | null = null;
       if (plots.length > 0 && plotViewerRef.current) {
         try {
+          console.log("Attempting to capture plot image...");
           plotImage = await plotViewerRef.current.getPlotImage();
-        } catch (e) {
+          if (plotImage) {
+            setLogs(prev => [...prev, { id: Date.now().toString(), type: 'info', message: `✅ Plot Image Captured (${Math.round(plotImage!.length / 1024)} KB)`, timestamp: Date.now() }]);
+          } else {
+            setLogs(prev => [...prev, { id: Date.now().toString(), type: 'error', message: `⚠️ Plot capture returned empty image`, timestamp: Date.now() }]);
+          }
+        } catch (e: any) {
           console.warn("Failed to capture plot image:", e);
+          setLogs(prev => [...prev, { id: Date.now().toString(), type: 'error', message: `❌ Plot Capture Failed: ${e.message}`, timestamp: Date.now() }]);
         }
       }
+
+      // 2. Now switch to the report tab
+      setActiveMainTab('report');
+      // Show loading state 
+      setReportMarkdown('# Generating Report...\n\nPlease wait while the AI analyzes your code, results, and plots to generate a scientific report.');
+
+      // Serialize logs and variables for context
+      const logsText = logs.slice(-20).map(l => `[${l.type}] ${l.message}`).join('\n');
+      const varsText = variables.map(v => `${v.name} = ${v.value}`).join('\n');
 
       const markdown = await generateReport(code, logsText, varsText, plotImage ? [plotImage] : undefined);
       setReportMarkdown(markdown);
@@ -338,7 +348,7 @@ const App: React.FC = () => {
                     <CodeEditor code={code} onChange={(val) => setCode(val || '')} onRun={handleRunCode} />
                   </div>
                   <div className={`absolute inset-0 ${activeMainTab === 'plots' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
-                    <PlotViewer plots={plots} theme={theme} activeInteraction={activeInteraction} onUpdateInteraction={handleUpdateInteraction} />
+                    <PlotViewer ref={plotViewerRef} plots={plots} theme={theme} activeInteraction={activeInteraction} onUpdateInteraction={handleUpdateInteraction} />
                   </div>
                 </div>
               </div>
@@ -418,6 +428,7 @@ const App: React.FC = () => {
                       </div>
                       <div className={`absolute inset-0 ${activeMainTab === 'plots' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
                         <PlotViewer
+                          ref={plotViewerRef}
                           plots={plots}
                           theme={theme}
                           activeInteraction={activeInteraction}

@@ -304,7 +304,27 @@ Example:
     // Post-process: Replace placeholders with actual Data URIs
     if (images) {
       images.forEach((img, idx) => {
-        markdown = markdown.replace(new RegExp(`\\{\\{PLOT_IMAGE_${idx}\\}\\}`, 'g'), img);
+        const placeholder = `{{PLOT_IMAGE_${idx}}}`;
+
+        // 1. Check for placeholder inside backticks (model often puts it in `code`)
+        // Regex: backtick + spaces + {{PLOT_IMAGE_n}} + spaces + backtick
+        const codeBlockRegex = new RegExp(`\`\\s*\\{\\{\\s*PLOT_IMAGE_${idx}\\s*\\}\\}\\s*\``, 'g');
+
+        // 2. Standard Regex
+        const standardRegex = new RegExp(`\\{\\{\\s*PLOT_IMAGE_${idx}\\s*\\}\\}`, 'g');
+
+        const imageMarkdown = `\n\n![Generated Plot](${img})\n\n`;
+
+        if (markdown.match(codeBlockRegex)) {
+          console.log(`[Report] Found backticked placeholder for image ${idx}. Stripping backticks and replacing.`);
+          markdown = markdown.replace(codeBlockRegex, imageMarkdown);
+        } else if (markdown.match(standardRegex)) {
+          console.log(`[Report] Found standard placeholder for image ${idx}. Replacing.`);
+          markdown = markdown.replace(standardRegex, imageMarkdown);
+        } else {
+          console.warn(`[Report] Model ignored plot placeholder ${placeholder}. Appending image manually.`);
+          markdown += imageMarkdown;
+        }
       });
     }
 
