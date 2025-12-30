@@ -23,11 +23,11 @@ import {
 import { CodeEditor } from './components/CodeEditor';
 import { CommandWindow } from './components/CommandWindow';
 import { WorkspaceViewer } from './components/WorkspaceViewer';
-import { PlotViewer } from './components/PlotViewer';
+import { PlotViewer, PlotViewerHandle } from './components/PlotViewer';
 import { ReportViewer } from './components/ReportViewer';
 import { ChatSidebar } from './components/ChatSidebar';
 import { runtime, LogEntry, Variable, PlotData, Interaction } from './lib/runtime';
-import { generateReport, generateCodeFromPrompt } from './services/geminiService';
+import { generateReport, generateCodeFromPrompt, editReport } from './services/geminiService';
 
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import { EquationEditor } from './components/EquationEditor';
@@ -141,15 +141,21 @@ const App: React.FC = () => {
     addChatMessage('user', text);
     setIsAiProcessing(true);
     try {
-      // Use Generation Service (supports images) instead of Review
-      const response = await generateCodeFromPrompt(text, code, mathMode, images);
-
-      if (response.code) {
-        setCode(response.code);
-        addChatMessage('ai', response.explanation);
-        setActiveMainTab('editor'); // Switch to editor to show new code
+      // CONTEXTUAL ROUTING: If 'Document' tab is active and we have content, treat as Editorial Request
+      if (activeMainTab === 'report' && reportMarkdown.trim().length > 10) {
+        const updatedMarkdown = await editReport(reportMarkdown, text);
+        setReportMarkdown(updatedMarkdown);
+        addChatMessage('ai', "I've updated the report based on your request.");
       } else {
-        addChatMessage('ai', response.explanation || "I couldn't generate any code for that request.");
+        // Standard Code Generation (existing logic)
+        const response = await generateCodeFromPrompt(text, code, mathMode, images);
+        if (response.code) {
+          setCode(response.code);
+          addChatMessage('ai', response.explanation);
+          setActiveMainTab('editor'); // Switch to editor to show new code
+        } else {
+          addChatMessage('ai', response.explanation || "I couldn't generate any code for that request.");
+        }
       }
     } catch (err: any) {
       addChatMessage('ai', `Error: ${err.message}`);
@@ -177,6 +183,8 @@ const App: React.FC = () => {
     handleChatSubmit("Please review the current code. Check for errors, bugs, or improvements, and fix them if necessary.");
   };
 
+  const plotViewerRef = React.useRef<PlotViewerHandle>(null);
+
   const handlePublish = async () => {
     if (isPublishing) return;
     setIsPublishing(true);
@@ -189,7 +197,17 @@ const App: React.FC = () => {
       const logsText = logs.slice(-20).map(l => `[${l.type}] ${l.message}`).join('\n');
       const varsText = variables.map(v => `${v.name} = ${v.value}`).join('\n');
 
-      const markdown = await generateReport(code, logsText, varsText);
+      // Capture plot image if available
+      let plotImage: string | null = null;
+      if (plots.length > 0 && plotViewerRef.current) {
+        try {
+          plotImage = await plotViewerRef.current.getPlotImage();
+        } catch (e) {
+          console.warn("Failed to capture plot image:", e);
+        }
+      }
+
+      const markdown = await generateReport(code, logsText, varsText, plotImage ? [plotImage] : undefined);
       setReportMarkdown(markdown);
     } catch (e: any) {
       setReportMarkdown(`# Generation Failed\n\nError: ${e.message}`);
@@ -274,14 +292,14 @@ const App: React.FC = () => {
 
         {/* Right Actions */}
         <div className="flex items-center gap-2">
-          {/* <button
+          <button
             onClick={handlePublish}
             disabled={isPublishing}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-xs font-bold uppercase tracking-wide mr-2 ${isPublishing ? 'bg-slate-700 text-slate-500' : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'}`}
             title="Generate Scientific Report"
           >
             <Printer className="w-4 h-4" /> {isPublishing ? 'Publishing...' : 'Publish Report'}
-          </button> */}
+          </button>
 
           <div className="w-px h-6 bg-slate-700 mx-1"></div>
 
@@ -313,6 +331,7 @@ const App: React.FC = () => {
                 <div className="flex bg-slate-800 border-b border-slate-700 flex-shrink-0">
                   <button onClick={() => setActiveMainTab('editor')} className={`flex-1 px-4 py-3 text-xs font-bold uppercase ${activeMainTab === 'editor' ? 'text-indigo-400 border-b-2 border-indigo-500' : 'text-slate-500'}`}><FileCode className="w-4 h-4 mx-auto" /></button>
                   <button onClick={() => setActiveMainTab('plots')} className={`flex-1 px-4 py-3 text-xs font-bold uppercase ${activeMainTab === 'plots' ? 'text-pink-400 border-b-2 border-pink-500' : 'text-slate-500'}`}><Grid className="w-4 h-4 mx-auto" /></button>
+                  <button onClick={() => setActiveMainTab('report')} className={`flex-1 px-4 py-3 text-xs font-bold uppercase ${activeMainTab === 'report' ? 'text-emerald-400 border-b-2 border-emerald-500' : 'text-slate-500'}`}><BookOpen className="w-4 h-4 mx-auto" /></button>
                 </div>
                 <div className="flex-grow relative bg-[#1e1e1e]">
                   <div className={`absolute inset-0 ${activeMainTab === 'editor' ? 'z-10' : 'z-0 invisible'}`}>
@@ -380,12 +399,12 @@ const App: React.FC = () => {
                       >
                         <Grid className="w-4 h-4" /> Plots {plots.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-pink-500/20 text-pink-400 rounded-full text-[10px]">{plots.length}</span>}
                       </button>
-                      {/* <button
-                      onClick={() => setActiveMainTab('report')}
-                      className={`px-6 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeMainTab === 'report' ? 'bg-slate-900 text-emerald-400 border-t-2 border-t-emerald-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
-                    >
-                      <BookOpen className="w-4 h-4" /> Document
-                    </button> */}
+                      <button
+                        onClick={() => setActiveMainTab('report')}
+                        className={`px-6 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-r border-slate-700 transition-colors ${activeMainTab === 'report' ? 'bg-slate-900 text-emerald-400 border-t-2 border-t-emerald-500' : 'text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}
+                      >
+                        <BookOpen className="w-4 h-4" /> Document
+                      </button>
                     </div>
 
                     {/* Content */}
@@ -405,9 +424,9 @@ const App: React.FC = () => {
                           onUpdateInteraction={handleUpdateInteraction}
                         />
                       </div>
-                      {/* <div className={`absolute inset-0 ${activeMainTab === 'report' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
-                      <ReportViewer markdown={reportMarkdown} />
-                    </div> */}
+                      <div className={`absolute inset-0 ${activeMainTab === 'report' ? 'z-10' : 'z-0 invisible'} bg-white dark:bg-slate-900`}>
+                        <ReportViewer markdown={reportMarkdown} />
+                      </div>
                     </div>
                   </div>
                 </Panel>

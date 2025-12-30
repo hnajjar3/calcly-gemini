@@ -1,7 +1,11 @@
-import React from 'react';
+import { forwardRef, useImperativeHandle, useRef } from 'react';
 import Plot from 'react-plotly.js';
 import { PlotData, Interaction } from '../lib/runtime';
 import { InteractiveControls } from './InteractiveControls';
+
+export interface PlotViewerHandle {
+    getPlotImage: () => Promise<string | null>;
+}
 
 interface PlotViewerProps {
     plots: PlotData[];
@@ -10,7 +14,68 @@ interface PlotViewerProps {
     onUpdateInteraction?: (id: string, values: Record<string, number>) => void;
 }
 
-export const PlotViewer: React.FC<PlotViewerProps> = ({ plots, theme, activeInteraction, onUpdateInteraction }) => {
+export const PlotViewer = forwardRef<PlotViewerHandle, PlotViewerProps>(({ plots, theme, activeInteraction, onUpdateInteraction }, ref) => {
+    const plotRef = useRef<any>(null);
+
+    useImperativeHandle(ref, () => ({
+        getPlotImage: async () => {
+            if (!plotRef.current || plots.length === 0) return null;
+            try {
+                // Access the underlying Plotly object through the react-plotly.js ref
+                // The library exposes 'el' property or we can use plot component instance method if available
+                // react-plotly.js uses 'editor' property for accesses or we can use Plotly library method on the element
+                // But the easiest way provided by react-plotly.js is usually accessing the el property or using standard Plotly.toImage
+
+                // Better approach: Usage of the library's `toImage` utility on the graph div.
+                // However, react-plotly.js component ref has direct methods? No, it wraps the div.
+                // Let's rely on standard Plotly.toImage if we can getting the node.
+                // Actually the simplest for react-plotly is usually:
+                // const graphDiv = plotRef.current.el;
+                // return await Plotly.toImage(graphDiv, {format: 'png', height: 600, width: 800});
+
+                // We need to import Plotly to do that? 'react-plotly.js' bundles it but doesn't easily export the static `toImage` method 
+                // unless we import 'plotly.js' separately or use the instance.
+                // Ah, the instance `plotRef.current` likely exposes `el` which is the DOM node.
+                // But we don't have global `Plotly` variable. 
+                // Wait, `react-plotly.js` creates a `Plot` component. 
+
+                // Let's try to get the node and use the window.Plotly (injected in index.html) or just assume valid ref.
+                // Actually, since we don't import Plotly directly here (it's in Runtime via CDN), we might not have it in module scope.
+                // But `index.html` loads it globally? Wait, no, `PlotViewer` uses `import Plot from 'react-plotly.js'`.
+                // That imports a bundled version. 
+
+                // Let's traverse the ref properly. 
+                const graphDiv = plotRef.current?.el;
+                if (!graphDiv) return null;
+
+                // Use the globally exposed Plotly if available (since we saw it in index.html?), 
+                // OR simpler: react-plotly.js ref might not expose `toImage`.
+                // BUT, standard Plotly.toImage(graphDiv) is the standard way.
+                // Is `Plotly` global? Yes, we saw `window.Plotly` or similar in `index.html`? 
+                // No, index.html loaded `nerdamer`, `algebrite`, `mathjs` but NOT plotly CDN. 
+                // `package.json` has `plotly.js` and `react-plotly.js`.
+                // So `react-plotly.js` bundles it.
+
+                // We can import the static method from plotly.js if we installed it.
+                // Let's try dynamic import or just use the global if it exists which it might not.
+
+                // Safe bet: Import Plotly from 'plotly.js' to use `toImage`.
+                // But that increases bundle size? It's already there for the component.
+                // Let's try:
+                // const Plotly = (await import('plotly.js-dist-min')).default;
+                // package.json has "plotly.js".
+                const { toImage } = await import('plotly.js');
+                return await toImage(graphDiv, { format: 'png', width: 800, height: 600 });
+            } catch (e) {
+                console.error("Failed to capture plot image", e);
+                return null;
+            }
+        }
+    }));
+
+    // ... (rest of render)
+    // Update Plot component: ref={plotRef}
+
     if (plots.length === 0) {
         return (
             <div className="h-full w-full flex items-center justify-center bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 text-slate-400">
@@ -112,6 +177,7 @@ export const PlotViewer: React.FC<PlotViewerProps> = ({ plots, theme, activeInte
 
             <div className="flex-grow relative min-h-0">
                 <Plot
+                    ref={plotRef}
                     data={latestPlot.data}
                     layout={mergedLayout}
                     useResizeHandler={true}
@@ -121,4 +187,4 @@ export const PlotViewer: React.FC<PlotViewerProps> = ({ plots, theme, activeInte
             </div>
         </div>
     );
-};
+}); // Close the forwardRef correctly

@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { CodeGenerationResponse } from "../types";
 
 // Helper: Extract JSON from potentially messy model output
@@ -17,18 +17,18 @@ const extractJSON = (raw: string): string => {
   return text;
 };
 
-// Helper to safely get API key at runtime, bypassing Vite's build-time replacement if needed
+// Helper to safely get API key at runtime
 const getApiKey = (): string => {
-  // Check global window injection first (Production Server)
   if (typeof window !== 'undefined' && (window as any).GEMINI_API_KEY) {
     return (window as any).GEMINI_API_KEY;
   }
-  // Check process.env (Local Dev / Build time)
   return process.env.GEMINI_API_KEY || process.env.API_KEY || '';
 };
 
+const MODEL_NAME = 'gemini-2.0-flash-exp';
+
 export const generateCodeFromPrompt = async (query: string, previousCode?: string, mathMode: 'numerical' | 'symbolic' | 'auto' = 'auto', images?: string[]): Promise<CodeGenerationResponse> => {
-  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+  const genAI = new GoogleGenerativeAI(getApiKey());
   const parts: any[] = [];
 
   if (previousCode) {
@@ -38,7 +38,6 @@ export const generateCodeFromPrompt = async (query: string, previousCode?: strin
   // Add images if present
   if (images && images.length > 0) {
     images.forEach(base64 => {
-      // Expect base64 to be standard data:image/png;base64,.....
       const match = base64.match(/^data:(image\/[a-z]+);base64,(.+)$/);
       if (match) {
         parts.push({
@@ -80,6 +79,10 @@ export const generateCodeFromPrompt = async (query: string, previousCode?: strin
                 - Use 'nerdamer' (preferred for solving equations).
                 - Use 'Algebrite' (preferred for symbolic simplification or tensor math).
                   - Ex: \`const res = Algebrite.run('simplify(a+a)');\`
+                - **OUTPUT FORMATTING**:
+                  - Always \`print()\` or \`console.log()\` your final results.
+                  - Use descriptive labels. Ex: \`print('Solutions:', solutions.toString())\`.
+                  - Ensure complex objects are converted to strings if needed.
             - IF MODE IS 'AUTO' (Recommended):
                 - INTELLIGENTLY MIX libraries.
                 - **Solving/Calculus**: Use 'nerdamer' ('solve', 'integrate').
@@ -105,31 +108,30 @@ export const generateCodeFromPrompt = async (query: string, previousCode?: strin
             
             Output JSON ONLY.`;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
-    contents: { parts },
-    config: {
-      systemInstruction: systemInstruction,
-      thinkingConfig: { thinkingBudget: 8192 },
+  const model = genAI.getGenerativeModel({
+    model: MODEL_NAME,
+    systemInstruction: systemInstruction,
+    generationConfig: {
       responseMimeType: "application/json",
       responseSchema: {
-        type: Type.OBJECT,
+        type: SchemaType.OBJECT,
         properties: {
-          code: { type: Type.STRING, description: "The executable JavaScript code" },
-          explanation: { type: Type.STRING, description: "Brief explanation of what the code does" }
+          code: { type: SchemaType.STRING, description: "The executable JavaScript code" },
+          explanation: { type: SchemaType.STRING, description: "Brief explanation of what the code does" }
         },
         required: ["code", "explanation"]
       }
     }
   });
 
-  const raw = response.text || "{}";
+  const result = await model.generateContent(parts);
+  const raw = result.response.text() || "{}";
   const cleaned = extractJSON(raw);
   return JSON.parse(cleaned) as CodeGenerationResponse;
 };
 
 export const reviewCode = async (code: string, userMessage: string, mathMode: 'numerical' | 'symbolic' | 'auto'): Promise<{ message: string; fixedCode?: string }> => {
-  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+  const genAI = new GoogleGenerativeAI(getApiKey());
   const parts: any[] = [
     { text: `Current Code:\n\`\`\`javascript\n${code}\n\`\`\`` },
     { text: `User Message: "${userMessage}"` },
@@ -151,62 +153,128 @@ export const reviewCode = async (code: string, userMessage: string, mathMode: 'n
             
             Output JSON: { "message": "Natural language response...", "fixedCode": "Optional string if code should be updated" }`;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
-    contents: { parts },
-    config: {
-      systemInstruction: systemInstruction,
-      thinkingConfig: { thinkingBudget: 4096 },
+  const model = genAI.getGenerativeModel({
+    model: MODEL_NAME,
+    systemInstruction: systemInstruction,
+    generationConfig: {
       responseMimeType: "application/json",
       responseSchema: {
-        type: Type.OBJECT,
+        type: SchemaType.OBJECT,
         properties: {
-          message: { type: Type.STRING },
-          fixedCode: { type: Type.STRING, nullable: true }
+          message: { type: SchemaType.STRING },
+          fixedCode: { type: SchemaType.STRING, nullable: true }
         },
         required: ["message"]
       }
     }
   });
 
-  const raw = response.text || "{}";
+  const result = await model.generateContent(parts);
+  const raw = result.response.text() || "{}";
   const cleaned = extractJSON(raw);
   return JSON.parse(cleaned);
 };
 
-export const generateReport = async (code: string, logs: string, variables: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: getApiKey() });
-  const parts: any[] = [
-    { text: `Script Code:\n\`\`\`javascript\n${code}\n\`\`\`` },
-    { text: `Execution Logs:\n${logs}` },
-    { text: `Workspace Variables:\n${variables}` },
-    { text: "Task: Generate a professional scientific report based on this analysis." }
-  ];
+const REPORT_SYSTEM_PROMPT = `You are a Scientific Publisher.
+Convert the provided code execution data into a professional "document-style" report.
 
-  const systemInstruction = `You are a Scientific Publisher.
-            Convert the provided code execution data into a professional "document-style" report.
-            
-            Structure:
-            1. **Title & Introduction**: Infer the goal from the code comments and variable names.
-            2. **Methodology**: Explain the math/algorithm used (use LaTeX for math, e.g., $x^2$).
-            3. **Results**: Present the calculated values and findings.
-            4. **Conclusion**: Summarize.
+Structure:
+# [Title]
+## Executive Summary
+[Bullet points...]
+## Methodology
+[Explanation...]
+   - IMPORTANT: Use block math '$$...$$' for all main equations so they are centered.
+## Results
+[Findings...]
+## Conclusion
+[Wrap-up]
 
-            Formatting:
-            - Use standard Markdown.
-            - Use single '$' for inline math: $f(x) = x^2$
-            - Use '$$' for block math.
-            - Do NOT include the raw code unless relevant for snippets.
-            - Make it look like a finished paper.`;
+Formatting:
+- Use standard Markdown headers (#, ##, ###).
+- Use double dollar signs '$$' for centered display math.
+- Do NOT include the raw code unless relevant for snippets.
+- Make it look like a finished paper.`;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
-    contents: { parts },
-    config: {
-      systemInstruction: systemInstruction,
-      thinkingConfig: { thinkingBudget: 4096 }
-    }
+export const generateReport = async (code: string, logs: string, variables: string, images?: string[]): Promise<string> => {
+  const genAI = new GoogleGenerativeAI(getApiKey());
+  const model = genAI.getGenerativeModel({
+    model: MODEL_NAME,
+    systemInstruction: REPORT_SYSTEM_PROMPT
   });
 
-  return response.text || "# Report Generation Failed";
+  let promptText = `
+Generate a scientific report for the following code execution:
+
+CODE:
+${code}
+
+LOGS:
+${logs}
+
+VARIABLES:
+${variables}
+`;
+
+  if (images && images.length > 0) {
+    promptText += `\n\nNOTE: A plot image has been provided. Please analyze this plot and include it in the "Results" or "Visualization" section of the report. 
+IMPORTANT: To insert the plot, use the exact placeholder text "{{PLOT_IMAGE_0}}" (without quotes) in your markdown. Do not try to generate a data URI yourself, just use the placeholder. 
+Example:
+![Damped Sine Wave Visualization]({{PLOT_IMAGE_0}})
+    `;
+  }
+
+  // Construct parts: Text + Images
+  const parts: any[] = [{ text: promptText }];
+  if (images) {
+    images.forEach(imgBase64 => {
+      // strip header if present for API, but keep it for replacement later
+      // API expects just base64 data
+      const base64Data = imgBase64.split(',')[1];
+      if (base64Data) {
+        parts.push({
+          inlineData: {
+            mimeType: "image/png",
+            data: base64Data
+          }
+        });
+      }
+    });
+  }
+
+  try {
+    const result = await model.generateContent(parts);
+    let markdown = result.response.text();
+
+    // Post-process: Replace placeholders with actual Data URIs
+    if (images) {
+      images.forEach((img, idx) => {
+        markdown = markdown.replace(new RegExp(`\\{\\{PLOT_IMAGE_${idx}\\}\\}`, 'g'), img);
+      });
+    }
+
+    return markdown;
+  } catch (error: any) {
+    return `# Report Generation Failed\n\nError: ${error.message}`;
+  }
+};
+
+export const editReport = async (currentMarkdown: string, userPrompt: string): Promise<string> => {
+  const genAI = new GoogleGenerativeAI(getApiKey());
+  const model = genAI.getGenerativeModel({
+    model: MODEL_NAME,
+    systemInstruction: "You are a helpful AI editor improving a scientific report. Return ONLY the updated markdown. Maintain existing structure and formatting."
+  });
+
+  const parts = [
+    { text: `Original Document:\n${currentMarkdown}` },
+    { text: `User Edit Request: "${userPrompt}"` }
+  ];
+
+  try {
+    const result = await model.generateContent(parts);
+    return result.response.text();
+  } catch (error: any) {
+    return `Error updating report: ${error.message}`;
+  }
 };

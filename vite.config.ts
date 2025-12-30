@@ -15,8 +15,8 @@ export default defineConfig(({ mode }) => {
         transformIndexHtml(html) {
           // During development (npm run dev), inject the key from .env file immediately
           if (mode === 'development') {
-             const script = `<script>if (window.process && window.process.env) { window.process.env.API_KEY = "${env.API_KEY || ''}"; }</script>`;
-             return html.replace('<!--ENV_INJECTION-->', script);
+            const script = `<script>if (window.process && window.process.env) { window.process.env.API_KEY = "${env.API_KEY || process.env.API_KEY || ''}"; }</script>`;
+            return html.replace('<!--ENV_INJECTION-->', script);
           }
           // During build/production, leave placeholder.
           // The server.js will handle the actual injection at runtime.
@@ -26,6 +26,13 @@ export default defineConfig(({ mode }) => {
     ],
     // We remove the 'define' block because we are using window.env injection strategy
     // which is safer for runtime variables in Docker containers
+    resolve: {
+      alias: {
+        'buffer': 'buffer',
+        'buffer/': 'buffer',
+        'stream': 'stream-browserify',
+      },
+    },
     build: {
       outDir: 'dist',
       emptyOutDir: true,

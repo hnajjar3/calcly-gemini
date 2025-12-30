@@ -148,10 +148,38 @@ class Runtime {
 
     public async execute(code: string) {
         const safeLog = (type: LogType, ...args: any[]) => {
+            let message = args.map(a => (typeof a === 'object' ? this.formatLogObject(a) : String(a))).join(' ');
+
+            // Auto-convert fractions to decimals for better readability
+            // Matches num/denom explicitly. simpler regex is safer for arrays.
+            // e.g. [1/2, 3/4] -> [1/2 (= 0.5), 3/4 (= 0.75)]
+            // e.g. [12345/67890] -> [0.1818] (large numbers replaced)
+            const fractionRegex = /(-?\d+)\/(\d+)/g;
+            message = message.replace(fractionRegex, (match, numStr, denomStr) => {
+                try {
+                    const num = parseInt(numStr);
+                    const denom = parseInt(denomStr);
+                    if (denom === 0) return match; // Avoid division by zero issues
+
+                    const val = num / denom;
+
+                    // Logic: If numbers are "large" (>= 4 digits), simply REPLACE with decimal to reduce noise.
+                    // If numbers are small, keep them and APPEND decimal for clarity.
+                    if (Math.abs(num) > 999 || denom > 999) {
+                        // e.g. 12345/67890 -> 0.181838
+                        return val.toPrecision(6).replace(/\.?0+$/, '');
+                    }
+                    // e.g. 1/3 -> 1/3 (= 0.333333)
+                    return `${match} (= ${val.toPrecision(6).replace(/\.?0+$/, '')})`;
+                } catch (e) {
+                    return match;
+                }
+            });
+
             this.onLog({
                 id: uuidv4(),
                 type,
-                message: args.map(a => (typeof a === 'object' ? this.formatLogObject(a) : String(a))).join(' '),
+                message,
                 timestamp: Date.now(),
             });
         };
