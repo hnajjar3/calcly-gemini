@@ -301,19 +301,6 @@ const App: React.FC = () => {
           </button>
         </div>
 
-        {/* Model Selector */}
-        <div className="bg-slate-900 rounded-lg p-1 border border-slate-600 shrink-0 mx-2 hidden md:flex">
-          <select
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            className="bg-transparent text-xs font-medium text-slate-300 focus:outline-none px-2 py-1.5 uppercase tracking-wider cursor-pointer"
-          >
-            {AVAILABLE_MODELS.map(m => (
-              <option key={m.id} value={m.id} className="bg-slate-800">{m.name}</option>
-            ))}
-          </select>
-        </div>
-
         {/* Right Actions */}
         <div className="flex items-center gap-2">
           <button
