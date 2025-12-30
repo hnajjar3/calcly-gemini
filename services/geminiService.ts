@@ -3,7 +3,16 @@ import { CodeGenerationResponse } from "../types";
 
 // --- Configuration ---
 // Chat / Code Generation Models
-const CHAT_MODEL_PRIMARY = 'gemini-3-flash';
+// Chat / Code Generation Models
+export const AVAILABLE_MODELS = [
+  { id: 'gemini-3-pro', name: 'Gemini 3 Pro' },
+  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+  { id: 'gemini-3-flash', name: 'Gemini 3 Flash' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+  { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash Exp' },
+];
+
+const CHAT_MODEL_DEFAULT = 'gemini-3-flash';
 const CHAT_MODEL_FALLBACK = 'gemini-2.5-flash';
 
 // Report Generation Models
@@ -87,7 +96,10 @@ const generateWithFallback = async (
 
 // --- Exported Services ---
 
-export const generateCodeFromPrompt = async (query: string, previousCode?: string, mathMode: 'numerical' | 'symbolic' | 'auto' = 'auto', images?: string[]): Promise<CodeGenerationResponse> => {
+export const generateCodeFromPrompt = async (query: string, previousCode?: string, mathMode: 'numerical' | 'symbolic' | 'auto' = 'auto', images?: string[], model?: string): Promise<CodeGenerationResponse> => {
+  // Use selected model or default
+  const primaryModel = model || CHAT_MODEL_DEFAULT;
+
   const parts: any[] = [];
 
   if (previousCode) {
@@ -178,7 +190,7 @@ export const generateCodeFromPrompt = async (query: string, previousCode?: strin
   const result = await generateWithFallback(
     parts,
     systemInstruction,
-    CHAT_MODEL_PRIMARY,
+    primaryModel,
     CHAT_MODEL_FALLBACK,
     responseSchema
   );
@@ -222,7 +234,7 @@ export const reviewCode = async (code: string, userMessage: string, mathMode: 'n
   const result = await generateWithFallback(
     parts,
     systemInstruction,
-    CHAT_MODEL_PRIMARY,
+    CHAT_MODEL_DEFAULT,
     CHAT_MODEL_FALLBACK,
     responseSchema
   );

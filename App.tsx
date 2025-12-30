@@ -27,7 +27,7 @@ import { PlotViewer, PlotViewerHandle } from './components/PlotViewer';
 import { ReportViewer } from './components/ReportViewer';
 import { ChatSidebar } from './components/ChatSidebar';
 import { runtime, LogEntry, Variable, PlotData, Interaction } from './lib/runtime';
-import { generateReport, generateCodeFromPrompt, editReport } from './services/geminiService';
+import { generateReport, generateCodeFromPrompt, editReport, AVAILABLE_MODELS } from './services/geminiService';
 
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import { EquationEditor } from './components/EquationEditor';
@@ -50,6 +50,7 @@ const App: React.FC = () => {
   const [chatMessages, setChatMessages] = useState<{ id: string, sender: 'user' | 'ai', text: string, timestamp: number }[]>([]);
   const [activeBottomTab, setActiveBottomTab] = useState<'terminal' | 'equation'>('terminal');
   const [activeInteraction, setActiveInteraction] = useState<Interaction | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3-flash');
 
   const [isMobile, setIsMobile] = useState(false);
 
@@ -148,7 +149,7 @@ const App: React.FC = () => {
         addChatMessage('ai', "I've updated the report based on your request.");
       } else {
         // Standard Code Generation (existing logic)
-        const response = await generateCodeFromPrompt(text, code, mathMode, images);
+        const response = await generateCodeFromPrompt(text, code, mathMode, images, selectedModel);
         if (response.code) {
           setCode(response.code);
           addChatMessage('ai', response.explanation);
@@ -300,6 +301,19 @@ const App: React.FC = () => {
           </button>
         </div>
 
+        {/* Model Selector */}
+        <div className="bg-slate-900 rounded-lg p-1 border border-slate-600 shrink-0 mx-2 hidden md:flex">
+          <select
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            className="bg-transparent text-xs font-medium text-slate-300 focus:outline-none px-2 py-1.5 uppercase tracking-wider cursor-pointer"
+          >
+            {AVAILABLE_MODELS.map(m => (
+              <option key={m.id} value={m.id} className="bg-slate-800">{m.name}</option>
+            ))}
+          </select>
+        </div>
+
         {/* Right Actions */}
         <div className="flex items-center gap-2">
           <button
@@ -366,7 +380,15 @@ const App: React.FC = () => {
 
             {/* Mobile: Chat */}
             <Panel defaultSize={30} minSize={15}>
-              <ChatSidebar messages={chatMessages} onSendMessage={handleChatSubmit} onReviewCode={handleReviewClick} isProcessing={isAiProcessing} />
+              <ChatSidebar
+                messages={chatMessages}
+                onSendMessage={handleChatSubmit}
+                onReviewCode={handleReviewClick}
+                isProcessing={isAiProcessing}
+                availableModels={AVAILABLE_MODELS}
+                selectedModel={selectedModel}
+                onModelChange={setSelectedModel}
+              />
             </Panel>
           </PanelGroup>
         ) : (
@@ -382,6 +404,9 @@ const App: React.FC = () => {
                     onReviewCode={handleReviewClick}
                     isProcessing={isAiProcessing}
                     onClose={() => setIsLeftCollapsed(true)}
+                    availableModels={AVAILABLE_MODELS}
+                    selectedModel={selectedModel}
+                    onModelChange={setSelectedModel}
                   />
                 </Panel>
                 <PanelResizeHandle className="w-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-col-resize z-50" />

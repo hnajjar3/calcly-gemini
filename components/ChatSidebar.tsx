@@ -14,9 +14,21 @@ interface ChatSidebarProps {
     onReviewCode: () => void;
     onClose?: () => void;
     isProcessing: boolean;
+    availableModels: { id: string; name: string }[];
+    selectedModel: string;
+    onModelChange: (modelId: string) => void;
 }
 
-export const ChatSidebar: React.FC<ChatSidebarProps> = ({ messages, onSendMessage, onReviewCode, onClose, isProcessing }) => {
+export const ChatSidebar: React.FC<ChatSidebarProps> = ({
+    messages,
+    onSendMessage,
+    onReviewCode,
+    onClose,
+    isProcessing,
+    availableModels,
+    selectedModel,
+    onModelChange
+}) => {
     const [input, setInput] = useState('');
     const [isRecording, setIsRecording] = useState(false);
     const [selectedImage, setSelectedImage] = useState<string | null>(null); // Base64 string
@@ -79,28 +91,42 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ messages, onSendMessag
     return (
         <div className="flex flex-col h-full bg-slate-800 border-r border-slate-700 w-full">
             {/* Header */}
-            <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
-                <div className="flex items-center gap-2">
+            <div className="p-4 border-b border-slate-700 flex flex-col gap-3 bg-slate-900/50">
+                <div className="flex justify-between items-center">
                     <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider flex items-center gap-2">
                         <Bot className="w-4 h-4 text-indigo-400" /> AI Assistant
                     </h2>
-                    {onClose && (
+                    <div className="flex items-center gap-2">
                         <button
-                            onClick={onClose}
-                            className="text-slate-500 hover:text-slate-300 transition-colors p-1"
-                            title="Hide Chat Sidebar"
+                            onClick={onReviewCode}
+                            disabled={isProcessing}
+                            className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded flex items-center gap-1 transition-colors disabled:opacity-50"
+                            title="Review current code"
                         >
-                            <Minimize2 className="w-3.5 h-3.5" />
+                            <Code2 className="w-3 h-3" /> Review
                         </button>
-                    )}
+                        {onClose && (
+                            <button
+                                onClick={onClose}
+                                className="text-slate-500 hover:text-slate-300 transition-colors p-1"
+                                title="Hide Chat Sidebar"
+                            >
+                                <Minimize2 className="w-3.5 h-3.5" />
+                            </button>
+                        )}
+                    </div>
                 </div>
-                <button
-                    onClick={onReviewCode}
-                    disabled={isProcessing}
-                    className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-md flex items-center gap-1 transition-colors disabled:opacity-50"
+
+                {/* Model Selector */}
+                <select
+                    value={selectedModel}
+                    onChange={(e) => onModelChange(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 text-xs text-slate-300 rounded px-2 py-1.5 focus:outline-none focus:border-indigo-500 transition-colors"
                 >
-                    <Code2 className="w-3 h-3" /> Review Code
-                </button>
+                    {availableModels.map(m => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                </select>
             </div>
 
             {/* Messages */}
