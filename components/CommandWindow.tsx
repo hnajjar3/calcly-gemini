@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LogEntry } from '../lib/runtime';
+import { Trash2 } from 'lucide-react';
 
 interface CommandWindowProps {
     logs: LogEntry[];
     onExecute: (command: string) => void;
+    onClear?: () => void;
 }
 
-export const CommandWindow: React.FC<CommandWindowProps> = ({ logs, onExecute }) => {
+export const CommandWindow: React.FC<CommandWindowProps> = ({ logs, onExecute, onClear }) => {
     const [input, setInput] = useState('');
     const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -26,8 +28,17 @@ export const CommandWindow: React.FC<CommandWindowProps> = ({ logs, onExecute })
 
     return (
         <div className="h-full w-full flex flex-col bg-slate-900 border-t border-slate-700 font-mono text-sm">
-            <div className="px-4 py-1 bg-slate-800 border-b border-slate-700 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Command Window
+            <div className="px-4 py-1.5 bg-slate-800 border-b border-slate-700 text-xs font-bold text-slate-400 uppercase tracking-wider flex justify-between items-center">
+                <span>Command Window</span>
+                {onClear && (
+                    <button
+                        onClick={onClear}
+                        className="text-slate-500 hover:text-red-400 transition-colors p-1 rounded"
+                        title="Clear Terminal"
+                    >
+                        <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                )}
             </div>
             <div className="flex-grow overflow-y-auto p-4 space-y-1">
                 {logs.map((log) => (

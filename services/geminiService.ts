@@ -12,7 +12,7 @@ export const AVAILABLE_MODELS = [
   { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash Exp' },
 ];
 
-const CHAT_MODEL_DEFAULT = 'gemini-3-flash';
+const CHAT_MODEL_DEFAULT = 'gemini-3-pro';
 const CHAT_MODEL_FALLBACK = 'gemini-2.5-flash';
 
 // Report Generation Models
@@ -147,15 +147,17 @@ export const generateCodeFromPrompt = async (query: string, previousCode?: strin
                 - Use 'math.evaluate()' / 'math.matrix()' for complex calculations.
             - IF MODE IS 'SYMBOLIC':
                 - Use 'nerdamer' (preferred for solving equations).
-                - Use 'Algebrite' (preferred for symbolic simplification or tensor math).
+                - Use 'Algebrite' (preferred for calculus/integrals, simplification).
                   - Ex: \`const res = Algebrite.run('simplify(a+a)');\`
+                  - Ex: \`const area = Algebrite.run('defint(x^2, x, 0, 1)');\`
                 - **OUTPUT FORMATTING**:
                   - Always \`print()\` or \`console.log()\` your final results.
                   - Use descriptive labels. Ex: \`print('Solutions:', solutions.toString())\`.
                   - Ensure complex objects are converted to strings if needed.
             - IF MODE IS 'AUTO' (Recommended):
                 - INTELLIGENTLY MIX libraries.
-                - **Solving/Calculus**: Use 'nerdamer' ('solve', 'integrate').
+                - **Solving**: Use 'nerdamer' ('solve').
+                - **Calculus (Integrals)**: Use 'Algebrite'. Ex: \`Algebrite.run('defint(x^2, x, 0, 1)')\`.
                 - **Deep CAS/Simplification**: Use 'Algebrite'.
                 - **Plotting/Matrices**: Use 'math.js'.
                 - Example: "Simplify x+x and then plot it from 0 to 10"

@@ -50,7 +50,7 @@ const App: React.FC = () => {
   const [chatMessages, setChatMessages] = useState<{ id: string, sender: 'user' | 'ai', text: string, timestamp: number }[]>([]);
   const [activeBottomTab, setActiveBottomTab] = useState<'terminal' | 'equation'>('terminal');
   const [activeInteraction, setActiveInteraction] = useState<Interaction | null>(null);
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-3-flash');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3-pro');
 
   const [isMobile, setIsMobile] = useState(false);
 
@@ -360,7 +360,7 @@ const App: React.FC = () => {
             <Panel defaultSize={30} minSize={15}>
               <div className="h-full bg-slate-900 flex flex-col">
                 <div className="px-4 py-2 bg-slate-800 border-b border-slate-700 text-xs font-bold text-slate-400 uppercase">Terminal</div>
-                <div className="flex-grow relative"><CommandWindow logs={logs} onExecute={handleCommand} /></div>
+                <div className="flex-grow relative"><CommandWindow logs={logs} onExecute={handleCommand} onClear={() => setLogs([])} /></div>
               </div>
             </Panel>
             <PanelResizeHandle className="h-1 bg-slate-800 hover:bg-indigo-500 transition-colors cursor-row-resize z-50" />
@@ -490,7 +490,7 @@ const App: React.FC = () => {
 
                       <div className="flex-grow overflow-hidden relative">
                         <div className={`absolute inset-0 ${activeBottomTab === 'terminal' ? 'z-10' : 'z-0 invisible'}`}>
-                          <CommandWindow logs={logs} onExecute={handleCommand} />
+                          <CommandWindow logs={logs} onExecute={handleCommand} onClear={() => setLogs([])} />
                         </div>
                         <div className={`absolute inset-0 ${activeBottomTab === 'equation' ? 'z-10' : 'z-0 invisible'}`}>
                           <EquationEditor onInsertCode={handleInsertEquationCode} />
