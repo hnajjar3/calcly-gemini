@@ -1,7 +1,19 @@
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { CodeGenerationResponse } from "../types";
 
-// Helper: Extract JSON from potentially messy model output
+// --- Configuration ---
+// Chat / Code Generation Models
+const CHAT_MODEL_PRIMARY = 'gemini-3-flash';
+const CHAT_MODEL_FALLBACK = 'gemini-2.5-flash';
+
+// Report Generation Models
+const REPORT_MODEL_PRIMARY = 'gemini-2.5-pro';
+// Fallback to a known working model if the pro model fails
+const REPORT_MODEL_FALLBACK = 'gemini-2.0-flash-exp';
+
+// --- Helpers ---
+
+// Extract JSON from potentially messy model output
 const extractJSON = (raw: string): string => {
   let text = raw.trim();
   // Try to find a JSON block
@@ -17,7 +29,7 @@ const extractJSON = (raw: string): string => {
   return text;
 };
 
-// Helper to safely get API key at runtime
+// Safely get API key at runtime
 const getApiKey = (): string => {
   if (typeof window !== 'undefined' && (window as any).GEMINI_API_KEY) {
     return (window as any).GEMINI_API_KEY;
@@ -25,17 +37,63 @@ const getApiKey = (): string => {
   return process.env.GEMINI_API_KEY || process.env.API_KEY || '';
 };
 
-const MODEL_NAME = 'gemini-2.0-flash-exp';
+// Generic Fallback Verification Wrapper
+const generateWithFallback = async (
+  parts: any[],
+  systemInstruction: string,
+  primaryModel: string,
+  fallbackModel: string,
+  jsonSchema?: any
+): Promise<any> => {
+  const genAI = new GoogleGenerativeAI(getApiKey());
+
+  const config: any = {
+    systemInstruction,
+  };
+
+  if (jsonSchema) {
+    config.generationConfig = {
+      responseMimeType: "application/json",
+      responseSchema: jsonSchema
+    };
+  }
+
+  // Helper to run a specific model
+  const runModel = async (modelName: string) => {
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+      ...config
+    });
+    return await model.generateContent(parts);
+  };
+
+  try {
+    // Try Primary
+    console.log(`[Gemini] Attempting generation with ${primaryModel}...`);
+    return await runModel(primaryModel);
+  } catch (error: any) {
+    console.warn(`[Gemini] Primary model ${primaryModel} failed:`, error.message);
+    console.warn(`[Gemini] Falling back to ${fallbackModel}...`);
+
+    // Try Fallback
+    try {
+      return await runModel(fallbackModel);
+    } catch (fallbackError: any) {
+      console.error(`[Gemini] Fallback model ${fallbackModel} also failed:`, fallbackError.message);
+      throw fallbackError; // Re-throw if both fail
+    }
+  }
+};
+
+// --- Exported Services ---
 
 export const generateCodeFromPrompt = async (query: string, previousCode?: string, mathMode: 'numerical' | 'symbolic' | 'auto' = 'auto', images?: string[]): Promise<CodeGenerationResponse> => {
-  const genAI = new GoogleGenerativeAI(getApiKey());
   const parts: any[] = [];
 
   if (previousCode) {
     parts.push({ text: `Current Code:\n\`\`\`javascript\n${previousCode}\n\`\`\`` });
   }
 
-  // Add images if present
   if (images && images.length > 0) {
     images.forEach(base64 => {
       const match = base64.match(/^data:(image\/[a-z]+);base64,(.+)$/);
@@ -108,30 +166,29 @@ export const generateCodeFromPrompt = async (query: string, previousCode?: strin
             
             Output JSON ONLY.`;
 
-  const model = genAI.getGenerativeModel({
-    model: MODEL_NAME,
-    systemInstruction: systemInstruction,
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: SchemaType.OBJECT,
-        properties: {
-          code: { type: SchemaType.STRING, description: "The executable JavaScript code" },
-          explanation: { type: SchemaType.STRING, description: "Brief explanation of what the code does" }
-        },
-        required: ["code", "explanation"]
-      }
-    }
-  });
+  const responseSchema = {
+    type: SchemaType.OBJECT,
+    properties: {
+      code: { type: SchemaType.STRING, description: "The executable JavaScript code" },
+      explanation: { type: SchemaType.STRING, description: "Brief explanation of what the code does" }
+    },
+    required: ["code", "explanation"]
+  };
 
-  const result = await model.generateContent(parts);
+  const result = await generateWithFallback(
+    parts,
+    systemInstruction,
+    CHAT_MODEL_PRIMARY,
+    CHAT_MODEL_FALLBACK,
+    responseSchema
+  );
+
   const raw = result.response.text() || "{}";
   const cleaned = extractJSON(raw);
   return JSON.parse(cleaned) as CodeGenerationResponse;
 };
 
 export const reviewCode = async (code: string, userMessage: string, mathMode: 'numerical' | 'symbolic' | 'auto'): Promise<{ message: string; fixedCode?: string }> => {
-  const genAI = new GoogleGenerativeAI(getApiKey());
   const parts: any[] = [
     { text: `Current Code:\n\`\`\`javascript\n${code}\n\`\`\`` },
     { text: `User Message: "${userMessage}"` },
@@ -153,23 +210,23 @@ export const reviewCode = async (code: string, userMessage: string, mathMode: 'n
             
             Output JSON: { "message": "Natural language response...", "fixedCode": "Optional string if code should be updated" }`;
 
-  const model = genAI.getGenerativeModel({
-    model: MODEL_NAME,
-    systemInstruction: systemInstruction,
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: SchemaType.OBJECT,
-        properties: {
-          message: { type: SchemaType.STRING },
-          fixedCode: { type: SchemaType.STRING, nullable: true }
-        },
-        required: ["message"]
-      }
-    }
-  });
+  const responseSchema = {
+    type: SchemaType.OBJECT,
+    properties: {
+      message: { type: SchemaType.STRING },
+      fixedCode: { type: SchemaType.STRING, nullable: true }
+    },
+    required: ["message"]
+  };
 
-  const result = await model.generateContent(parts);
+  const result = await generateWithFallback(
+    parts,
+    systemInstruction,
+    CHAT_MODEL_PRIMARY,
+    CHAT_MODEL_FALLBACK,
+    responseSchema
+  );
+
   const raw = result.response.text() || "{}";
   const cleaned = extractJSON(raw);
   return JSON.parse(cleaned);
@@ -197,12 +254,6 @@ Formatting:
 - Make it look like a finished paper.`;
 
 export const generateReport = async (code: string, logs: string, variables: string, images?: string[]): Promise<string> => {
-  const genAI = new GoogleGenerativeAI(getApiKey());
-  const model = genAI.getGenerativeModel({
-    model: MODEL_NAME,
-    systemInstruction: REPORT_SYSTEM_PROMPT
-  });
-
   let promptText = `
 Generate a scientific report for the following code execution:
 
@@ -228,8 +279,6 @@ Example:
   const parts: any[] = [{ text: promptText }];
   if (images) {
     images.forEach(imgBase64 => {
-      // strip header if present for API, but keep it for replacement later
-      // API expects just base64 data
       const base64Data = imgBase64.split(',')[1];
       if (base64Data) {
         parts.push({
@@ -243,7 +292,13 @@ Example:
   }
 
   try {
-    const result = await model.generateContent(parts);
+    const result = await generateWithFallback(
+      parts,
+      REPORT_SYSTEM_PROMPT,
+      REPORT_MODEL_PRIMARY,
+      REPORT_MODEL_FALLBACK
+    );
+
     let markdown = result.response.text();
 
     // Post-process: Replace placeholders with actual Data URIs
@@ -260,19 +315,20 @@ Example:
 };
 
 export const editReport = async (currentMarkdown: string, userPrompt: string): Promise<string> => {
-  const genAI = new GoogleGenerativeAI(getApiKey());
-  const model = genAI.getGenerativeModel({
-    model: MODEL_NAME,
-    systemInstruction: "You are a helpful AI editor improving a scientific report. Return ONLY the updated markdown. Maintain existing structure and formatting."
-  });
-
   const parts = [
     { text: `Original Document:\n${currentMarkdown}` },
     { text: `User Edit Request: "${userPrompt}"` }
   ];
 
+  const systemInstruction = "You are a helpful AI editor improving a scientific report. Return ONLY the updated markdown. Maintain existing structure and formatting.";
+
   try {
-    const result = await model.generateContent(parts);
+    const result = await generateWithFallback(
+      parts,
+      systemInstruction,
+      REPORT_MODEL_PRIMARY,
+      REPORT_MODEL_FALLBACK
+    );
     return result.response.text();
   } catch (error: any) {
     return `Error updating report: ${error.message}`;
