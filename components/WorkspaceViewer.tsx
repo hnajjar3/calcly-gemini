@@ -1,8 +1,129 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Variable, runtime } from '../lib/runtime';
-import { Trash2, X, Upload } from 'lucide-react';
+import { Trash2, X, Activity, Upload } from 'lucide-react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
+
+// --- Sub-Components ---
+
+const Sparkline: React.FC<{ data: number[] }> = ({ data }) => {
+    if (!data || data.length === 0) return null;
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const range = max - min || 1;
+    const height = 30;
+    const width = 100;
+
+    // Create SVG Path
+    const points = data.map((val, i) => {
+        const x = (i / (data.length - 1)) * width;
+        const y = height - ((val - min) / range) * height; // Invert Y
+        return `${x},${y}`;
+    }).join(' ');
+
+    return (
+        <div className="w-full h-8 bg-slate-100 dark:bg-slate-900/50 rounded flex items-center overflow-hidden relative">
+            <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="stroke-indigo-500 fill-none stroke-[2px]">
+                <polyline points={points} />
+            </svg>
+        </div>
+    );
+};
+
+const LatexPreview: React.FC<{ latex: string }> = ({ latex }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (containerRef.current) {
+            try {
+                katex.render(latex, containerRef.current, {
+                    throwOnError: false,
+                    displayMode: false,
+                    maxExpand: 100
+                });
+            } catch (e) {
+                containerRef.current.innerText = latex;
+            }
+        }
+    }, [latex]);
+
+    return <div ref={containerRef} className="text-slate-700 dark:text-slate-200 text-lg overflow-x-auto py-1" />;
+};
+
+const MatrixPreview: React.FC<{ heatmap: NonNullable<Variable['metadata']>['heatmap'] }> = ({ heatmap }) => {
+    if (!heatmap) return null;
+    const { grid, min, max, rows, cols } = heatmap;
+    const range = max - min || 1;
+
+    return (
+        <div className="flex gap-2 items-center w-full">
+            <div className="grid gap-[1px] bg-slate-200 dark:bg-slate-700 p-[1px] rounded overflow-hidden"
+                style={{
+                    gridTemplateColumns: `repeat(${grid[0].length}, 1fr)`,
+                    width: '40px',
+                    height: '40px'
+                }}>
+                {grid.flat().map((val, i) => {
+                    const opacity = 0.2 + ((val - min) / range) * 0.8;
+                    return (
+                        <div key={i} className="bg-indigo-500" style={{ opacity }} />
+                    );
+                })}
+            </div>
+            <div className="text-[10px] text-slate-400 flex flex-col">
+                <span>{rows}×{cols}</span>
+                <span>Matrix</span>
+            </div>
+        </div>
+    );
+};
+
+const VariableCard: React.FC<{ variable: Variable; onDelete?: (name: string) => void }> = ({ variable, onDelete }) => {
+    const { name, value, metadata } = variable;
+
+    const renderPreview = () => {
+        if (!metadata) return <span className="text-slate-500 truncate">{String(value)}</span>;
+
+        switch (metadata.type) {
+            case 'array':
+                return metadata.sparkline ? <Sparkline data={metadata.sparkline} /> : <span className="text-xs text-slate-500">Array</span>;
+            case 'matrix':
+                return metadata.heatmap ? <MatrixPreview heatmap={metadata.heatmap} /> : <span className="text-xs text-slate-500">Matrix</span>;
+            case 'scalar':
+                return <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold truncate">{String(value)}</span>;
+            case 'symbolic':
+                return <LatexPreview latex={metadata.latex || String(value)} />;
+            default:
+                return <span className="text-slate-500 truncate">{String(value)}</span>;
+        }
+    };
+
+    return (
+        <div className="group relative bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/50 hover:border-indigo-500 dark:hover:border-indigo-500 rounded-lg p-3 transition-all hover:shadow-md cursor-pointer">
+            <div className="flex justify-between items-start mb-2">
+                <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-700 dark:text-slate-200 text-sm overflow-hidden text-ellipsis max-w-[100px]" title={name}>{name}</span>
+                    <span className="text-[10px] uppercase text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">{metadata?.type || 'var'}</span>
+                </div>
+                {onDelete && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onDelete(name); }}
+                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity"
+                    >
+                        <X className="w-3.5 h-3.5" />
+                    </button>
+                )}
+            </div>
+
+            <div className="h-8 flex items-center">
+                {renderPreview()}
+            </div>
+        </div>
+    );
+};
+
 
 interface WorkspaceViewerProps {
     variables: Variable[];
@@ -12,6 +133,16 @@ interface WorkspaceViewerProps {
 
 export const WorkspaceViewer: React.FC<WorkspaceViewerProps> = ({ variables, onClear, onDeleteVariable }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const injectData = (name: string, data: any) => {
+        const json = JSON.stringify(data);
+        // We use the runtime to inject this directly
+        runtime.execute(`
+            // Data imported from ${name}
+            const ${name} = ${json};
+            console.log("Imported dataset '${name}' with " + ${name}.length + " rows.");
+        `);
+    };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -24,8 +155,7 @@ export const WorkspaceViewer: React.FC<WorkspaceViewerProps> = ({ variables, onC
                 header: true,
                 dynamicTyping: true,
                 complete: (results) => {
-                    const data = results.data;
-                    injectData(fileName, data);
+                    injectData(fileName, results.data);
                 },
                 error: (err) => {
                     alert(`Error parsing CSV: ${err.message}`);
@@ -50,26 +180,13 @@ export const WorkspaceViewer: React.FC<WorkspaceViewerProps> = ({ variables, onC
         e.target.value = '';
     };
 
-    const injectData = (name: string, data: any) => {
-        const json = JSON.stringify(data);
-        // We use the runtime to inject this directly
-        // Note: For very large datasets, this might block the UI.
-        // Ideally we would chunk this or use a more efficient transfer, but for <10MB JSON stringify is usually fine in modern V8.
-        runtime.execute(`
-            // Data imported from ${name}
-            const ${name} = ${json};
-            console.log("Imported dataset '${name}' with " + ${name}.length + " rows.");
-        `);
-    };
-
     return (
-        <div className="h-full w-full flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800">
-            <div className="px-4 py-2 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shrink-0">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Workspace</span>
+        <div className="h-full w-full flex flex-col bg-slate-50 dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800">
+            <div className="px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-end items-center shrink-0 shadow-sm z-10">
                 <div className="flex items-center gap-1">
                     <button
                         onClick={() => fileInputRef.current?.click()}
-                        className="text-slate-500 hover:text-indigo-500 transition-colors p-1"
+                        className="text-slate-500 hover:text-indigo-500 transition-colors p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700"
                         title="Import Data (CSV/Excel)"
                     >
                         <Upload className="w-3.5 h-3.5" />
@@ -77,7 +194,7 @@ export const WorkspaceViewer: React.FC<WorkspaceViewerProps> = ({ variables, onC
                     {onClear && variables.length > 0 && (
                         <button
                             onClick={onClear}
-                            className="text-slate-500 hover:text-red-500 active:text-red-700 transition-colors p-1"
+                            className="text-slate-500 hover:text-red-500 active:text-red-700 transition-colors p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700"
                             title="Clear Workspace"
                         >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -92,46 +209,20 @@ export const WorkspaceViewer: React.FC<WorkspaceViewerProps> = ({ variables, onC
                     className="hidden"
                 />
             </div>
-            <div className="flex-grow overflow-auto">
-                <table className="w-full text-sm text-left">
-                    <thead className="text-xs text-slate-500 uppercase bg-slate-50 dark:bg-slate-800/50 sticky top-0">
-                        <tr>
-                            <th className="px-4 py-2">Name</th>
-                            <th className="px-4 py-2">Value</th>
-                            <th className="px-4 py-2">Type</th>
-                            <th className="px-2 py-2 w-8"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {variables.map((v) => (
-                            <tr key={v.name} className="group border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                                <td className="px-4 py-2 font-mono text-indigo-600 dark:text-indigo-400 font-medium">{v.name}</td>
-                                <td className="px-4 py-2 font-mono text-slate-600 dark:text-slate-300 truncate max-w-[150px]" title={String(v.value)}>
-                                    {String(v.value)}
-                                </td>
-                                <td className="px-4 py-2 text-slate-400 text-xs italic">{v.type}</td>
-                                <td className="px-2 py-2 text-right">
-                                    {onDeleteVariable && (
-                                        <button
-                                            onClick={() => onDeleteVariable(v.name)}
-                                            className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all p-1"
-                                            title={`Delete ${v.name}`}
-                                        >
-                                            <X className="w-3.5 h-3.5" />
-                                        </button>
-                                    )}
-                                </td>
-                            </tr>
-                        ))}
-                        {variables.length === 0 && (
-                            <tr>
-                                <td colSpan={4} className="px-4 py-10 text-center text-slate-400 italic">
-                                    No variables in scope.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
+
+            <div className="flex-grow overflow-y-auto p-3">
+                <div className="space-y-2">
+                    {variables.map((v) => (
+                        <VariableCard key={v.name} variable={v} onDelete={onDeleteVariable} />
+                    ))}
+                    {variables.length === 0 && (
+                        <div className="flex flex-col items-center justify-center py-10 text-slate-400 text-center">
+                            <Activity className="w-8 h-8 mb-2 opacity-50" />
+                            <p className="text-sm">Workspace Empty</p>
+                            <p className="text-xs opacity-60">Run code to define variables</p>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

@@ -32,10 +32,25 @@ export interface Interaction {
 
 export type VariableValue = any;
 
+export interface VariableMetadata {
+    type: 'scalar' | 'array' | 'matrix' | 'symbolic' | 'other';
+    sparkline?: number[]; // For arrays (max 50 points)
+    heatmap?: {
+        grid: number[][]; // Max 10x10
+        min: number;
+        max: number;
+        rows: number;
+        cols: number;
+    };
+    latex?: string; // For symbolic
+    isConstant?: boolean; // For scalars
+}
+
 export interface Variable {
     name: string;
     value: VariableValue;
     type: string;
+    metadata?: VariableMetadata;
 }
 
 export interface PlotData {
@@ -122,8 +137,180 @@ class Runtime {
                 name: key,
                 value: this.formatValue(value),
                 type: this.getType(value),
+                metadata: this.generateMetadata(value, key)
             }));
         this.onVariablesUpdate(vars);
+    }
+
+    private generateMetadata(value: any, name?: string): VariableMetadata {
+        // 0. Function (JS Arrow or Standard) -> Symbolic
+        if (typeof value === 'function') {
+            try {
+                let str = value.toString();
+                let args = '';
+                let body = '';
+
+                // Arrow Function: (t) => ... or t => ...
+                if (str.includes('=>')) {
+                    const parts = str.split('=>');
+                    args = parts[0].trim();
+                    // Remove parentheses from args if needed (t) -> t
+                    if (args.startsWith('(') && args.endsWith(')')) args = args.slice(1, -1);
+
+                    body = parts.slice(1).join('=>').trim(); // Handle nested arrows poorly but good enough
+                }
+                // Standard Function: function(t) { return ... }
+                else if (str.startsWith('function')) {
+                    const argsMatch = str.match(/function\s*\(([^)]*)\)/);
+                    if (argsMatch) args = argsMatch[1].trim();
+
+                    const bodyMatch = str.match(/\{([\s\S]*)\}/);
+                    if (bodyMatch) body = bodyMatch[1].trim();
+                }
+
+                // Cleanup Body
+                if (body) {
+                    // Remove block braces { return x } -> x
+                    if (body.startsWith('{')) {
+                        body = body.replace(/^{|}$/g, '').trim();
+                        // Remove 'return' keyword
+                        body = body.replace(/^return\s+/, '');
+                        // Remove trailing semicolon
+                        if (body.endsWith(';')) body = body.slice(0, -1);
+                    }
+
+                    // Remove 'Math.' prefix for cleaner parsing
+                    // (Math.js handles some built-ins but 'Math.sin' might trip it up if not stripped)
+                    body = body.replace(/Math\./g, '');
+
+                    // Try converting to LaTeX using Math.js (standard lib, handles functions well)
+                    try {
+                        const node = math.parse(body);
+                        const latexBody = node.toTex();
+                        if (latexBody) {
+                            const signature = name ? `${name}(${args})` : '';
+                            return { type: 'symbolic', latex: signature ? `${signature} = ${latexBody}` : latexBody };
+                        }
+                    } catch (e) {
+                        // Math.js failed? Try Nerdamer
+                        try {
+                            const latexBody = nerdamer.convertToLaTeX(body);
+                            if (latexBody) {
+                                const signature = name ? `${name}(${args})` : '';
+                                return { type: 'symbolic', latex: signature ? `${signature} = ${latexBody}` : latexBody };
+                            }
+                        } catch (e2) {
+                            // Fallback: just return the clean string
+                            const signature = name ? `${name}(${args})` : '';
+                            return { type: 'symbolic', latex: signature ? `${signature} = ${body}` : body };
+                        }
+                    }
+                }
+            } catch (e) { }
+        }
+
+        // 1. Matrix (Math.js)
+        if (typeof value === 'object' && value !== null && value.isMatrix) {
+            const size = value.size();
+            const rows = size[0];
+            const cols = size.length > 1 ? size[1] : 1;
+
+            // Generate Heatmap (10x10 downsample)
+            // This is a simplified "center-crop" or "stride" approach for speed
+            const grid: number[][] = [];
+            let min = Infinity;
+            let max = -Infinity;
+
+            // Try to extract a 10x10 preview
+            const rStep = Math.max(1, Math.floor(rows / 10));
+            const cStep = Math.max(1, Math.floor(cols / 10));
+
+            for (let r = 0; r < Math.min(rows, 10 * rStep); r += rStep) {
+                const row: number[] = [];
+                for (let c = 0; c < Math.min(cols, 10 * cStep); c += cStep) {
+                    // Math.js matrix access
+                    // value.get([r, c]) might be slow in loop, use raw _data if available or standard api
+                    try {
+                        const val = value.get([r, c]);
+                        if (typeof val === 'number') {
+                            row.push(val);
+                            if (val < min) min = val;
+                            if (val > max) max = val;
+                        } else {
+                            row.push(0); // non-numeric
+                        }
+                    } catch (e) { row.push(0); }
+                }
+                grid.push(row);
+            }
+
+            return {
+                type: 'matrix',
+                heatmap: { grid, min: min === Infinity ? 0 : min, max: max === -Infinity ? 0 : max, rows, cols }
+            };
+        }
+
+        // 2. Array (Standard JS Array)
+        if (Array.isArray(value)) {
+            // Check if numeric array (heuristic: check first element)
+            if (value.length > 0 && typeof value[0] === 'number') {
+                // Downsample for Sparkline (Max 50 points)
+                const sparkline: number[] = [];
+                const step = Math.max(1, Math.floor(value.length / 50));
+
+                for (let i = 0; i < value.length; i += step) {
+                    sparkline.push(value[i]);
+                }
+
+                return {
+                    type: 'array',
+                    sparkline
+                };
+            }
+            return { type: 'other' }; // Non-numeric array
+        }
+
+        // 3. Scalar (Number)
+        if (typeof value === 'number') {
+            return {
+                type: 'scalar',
+                isConstant: true
+            };
+        }
+
+        // 4. Symbolic (Nerdamer object or Math String)
+        // Heuristic: Check if it's a Nerdamer object or a string that looks like math
+        try {
+            // Check for Nerdamer Object
+            if (value && typeof value === 'object' && (value.symbol || (value.toString().match(/[a-z]/i) && !value.isMatrix))) {
+                return { type: 'symbolic', latex: nerdamer(value.toString()).toTeX() };
+            }
+
+            // Check for Math String (Algebrite output or raw string)
+            if (typeof value === 'string') {
+                // Heuristic: Contains math operators or functions?
+                // Avoid plain text sentences.
+                const mathHeuristic = /[+\-*/^=]|\b(sin|cos|tan|log|exp|sqrt|integral|diff)\b/;
+                const looksLikeMath = mathHeuristic.test(value) && value.length < 200 && !value.includes(' ');
+
+                if (looksLikeMath) {
+                    try {
+                        // Attempt to convert to LaTeX using Nerdamer
+                        const latex = nerdamer.convertToLaTeX(value);
+                        if (latex && latex.length > 0) {
+                            return { type: 'symbolic', latex };
+                        }
+                    } catch (e) {
+                        // Fallback: if nerdamer fails, just show raw string if it was Algebrite result
+                        return { type: 'symbolic', latex: value };
+                    }
+                }
+            }
+        } catch (e) {
+            // Heuristics failed, just treat as other
+        }
+
+        return { type: 'other' };
     }
 
     private getType(value: any): string {
