@@ -152,7 +152,7 @@ const App: React.FC = () => {
     }]);
   };
 
-  const handleChatSubmit = async (text: string, images?: string[]) => {
+  const handleChatSubmit = async (text: string, images?: string[], modelOverride?: string) => {
     addChatMessage('user', text);
     setIsAiProcessing(true);
     try {
@@ -163,7 +163,8 @@ const App: React.FC = () => {
         addChatMessage('ai', "I've updated the report based on your request.");
       } else {
         // Standard Code Generation (existing logic)
-        const response = await generateCodeFromPrompt(text, code, mathMode, images, selectedModel);
+        const modelToUse = modelOverride || selectedModel;
+        const response = await generateCodeFromPrompt(text, code, mathMode, images, modelToUse);
         if (response.code) {
           setCode(response.code);
           addChatMessage('ai', response.explanation);
@@ -179,17 +180,26 @@ const App: React.FC = () => {
     }
   };
 
-  // Auto-execute chat from URL parameter (e.g. ?chat_query=Solve+this)
+  // Auto-execute chat from URL parameter (e.g. ?chat_query=Solve+this&model=gemini-3-flash)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const query = params.get('chat_query');
+    const modelParam = params.get('model');
+
     if (query) {
       // Clear the param to prevent re-submission on refresh
       const newUrl = window.location.pathname;
       window.history.replaceState({}, '', newUrl);
 
+      // Validate model if provided
+      const validModel = modelParam && AVAILABLE_MODELS.some(m => m.id === modelParam) ? modelParam : undefined;
+      if (validModel) {
+        setSelectedModel(validModel);
+      }
+
       // Delay slightly to ensure app is fully ready
-      setTimeout(() => handleChatSubmit(query), 500);
+      // Pass the model explicitly to avoid closure staleness issues with selectedModel state
+      setTimeout(() => handleChatSubmit(query, undefined, validModel), 500);
     }
   }, []);
 

@@ -13,12 +13,12 @@ export const AVAILABLE_MODELS = [
 ];
 
 const CHAT_MODEL_DEFAULT = 'gemini-3-pro';
-const CHAT_MODEL_FALLBACK = 'gemini-2.5-flash';
+const CHAT_MODEL_FALLBACK = 'gemini-3-flash';
 
 // Report Generation Models
 const REPORT_MODEL_PRIMARY = 'gemini-2.5-pro';
 // Fallback to a known working model if the pro model fails
-const REPORT_MODEL_FALLBACK = 'gemini-2.0-flash-exp';
+const REPORT_MODEL_FALLBACK = 'gemini-3-flash';
 
 // --- Helpers ---
 

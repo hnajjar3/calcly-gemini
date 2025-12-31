@@ -11,7 +11,7 @@ interface CommandWindowProps {
 
 export const CommandWindow: React.FC<CommandWindowProps> = ({ logs, onExecute, onSmartExecute, onClear }) => {
     const [input, setInput] = useState('');
-    const [isSmartMode, setIsSmartMode] = useState(false);
+    const [isSmartMode, setIsSmartMode] = useState(true);
     const bottomRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
