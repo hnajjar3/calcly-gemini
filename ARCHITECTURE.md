@@ -2,31 +2,39 @@
 
 ## 1. High-Level Overview
 
-**Calcly IDE** operates as a browser-based Integrated Development Environment. Unlike the previous chat-centric model, the core experience now revolves around the **Code Editor** and **Runtime Execution**, with AI acting as a Copilot rather than the primary interface.
+**Calcly IDE** is a browser-based Integrated Development Environment (IDE) designed for mathematical computation. It combines a traditional code editor and execution environment with a powerful AI Copilot to create a seamless and intuitive user experience.
 
 ### System Diagram
 
 ```mermaid
 graph TD
-    User -->|Scripts| Monaco[Code Editor]
-    User -->|Commands| REPL[Command Window]
-    User -->|Equations| EqLab[Equation Lab]
-    
+    subgraph "User Interface"
+        A[Monaco Code Editor]
+        B[Command Window REPL]
+        C[Equation Lab]
+        D[Workspace Viewer]
+        E[Plot Viewer]
+    end
+
     subgraph "Browser Runtime (Client-Side)"
-        Monaco --> Runtime[Runtime.ts Execution Engine]
-        REPL --> Runtime
-        Runtime -->|Capture| Variables[Variable Workspace]
-        Runtime -->|Render| Plots[Plot Viewer]
-        EqLab -->|Insert Compiled JS| Monaco
+        F[Runtime Engine (lib/runtime.ts)]
+        G[Variable Harvester]
+        H[Plotting Library (Plotly.js)]
     end
 
     subgraph "AI Services (Google Gemini)"
-        Copilot[Gemini Pro] -->|Generates| Code[JavaScript Code]
-        Copilot -->|Reviews| Audit[Code Review]
-        Copilot -->|Publishes| Report[Markdown Report]
+        I[AI Copilot (services/geminiService.ts)]
     end
-    
-    Runtime -->|Logs/Data| Copilot
+
+    A -- "Run Code" --> F
+    B -- "Execute Command" --> F
+    C -- "Insert Compiled JS" --> A
+    F -- "Update Variables" --> G
+    G -- "Display Variables" --> D
+    F -- "Generate Plot" --> H
+    H -- "Display Plot" --> E
+    A -- "Send Code to AI" --> I
+    I -- "Return Generated Code" --> A
 ```
 
 ---
@@ -34,54 +42,54 @@ graph TD
 ## 2. Core Components
 
 ### 2.1 The Runtime Engine (`lib/runtime.ts`)
-This is the heart of the IDE. It allows for "stateful" execution directly in the browser.
--   **Sandboxing**: Code runs inside an ephemeral `iframe` to prevent conflicting with the React app state.
--   **Variable Harvesting**:
-    -   After execution, the Runtime scans the frame's window object.
-    -   It detects user-defined variables (including those declared via `const`/`let` by rewriting them to `var` or properties).
-    -   These variables are surfaced in the **Workspace Viewer**.
--   **Persistence**: The state is maintained as long as the session is active (or until page refresh).
+
+The Runtime Engine is the heart of the Calcly IDE. It is responsible for executing user-provided JavaScript code in a safe and isolated environment.
+
+-   **Sandboxing**: Code is executed within an ephemeral `iframe` to prevent it from interfering with the main React application. This ensures that the IDE remains stable and responsive, even if the user's code contains errors or infinite loops.
+-   **Variable Harvesting**: After each execution, the Runtime Engine scans the `iframe`'s window object to identify any user-defined variables. These variables are then extracted and displayed in the **Workspace Viewer**, providing the user with a real-time view of their code's state.
+-   **State Persistence**: The Runtime Engine maintains the state of the user's session, including all defined variables and functions, until the page is refreshed. This allows users to build up complex calculations over time.
 
 ### 2.2 Equation Lab (`components/EquationEditor.tsx`)
-A bridge between symbolic math and executable code.
--   **Input**: MathLive visual editor (LaTeX).
--   **Engine**: CortexJS Compute Engine.
--   **Compilation Pipeline**:
-    1.  Parse LaTeX -> Canonical Form.
-    2.  `expr.compile()` -> Native JS Function (e.g., `(scope) => scope.x + 1`).
-    3.  **Adapter Layer**: Strips function wrappers and engine-specific context prefixes (`_.x`).
-    4.  **Output**: Clean, copy-pasteable JavaScript source code (`x + 1`).
+
+The Equation Lab provides a bridge between traditional mathematical notation and executable code.
+
+-   **Input**: Users can write equations using a visual LaTeX editor powered by MathLive.
+-   **Compilation**: The Equation Lab uses the CortexJS Compute Engine to parse the LaTeX input and compile it into a native JavaScript function. For example, the equation `f(x) = x^2 + 2x + 1` would be compiled into a function that takes a single argument `x` and returns the result of the expression.
+-   **Code Insertion**: Once the equation has been compiled, the user can insert the resulting JavaScript code directly into the Code Editor with a single click.
 
 ### 2.3 The AI Copilot (`services/geminiService.ts`)
-The AI is integrated as a tool, not a wrapper.
--   **Generation**: Converts natural language ("Plot a sine wave") into code, which the user *then* runs. This puts the user in control.
--   **Reporting**: Reads the *execution state* (logs, variable values) to generate scientific reports, effectively acting as an automated lab assistant.
+
+The AI Copilot is an intelligent assistant that helps users write code, debug problems, and generate reports.
+
+-   **Code Generation**: Users can provide natural language prompts to the AI Copilot, such as "Plot a sine wave from -PI to PI". The AI will then generate the corresponding JavaScript code and insert it into the Code Editor.
+-   **Code Review**: The AI Copilot can analyze a user's code and provide suggestions for improvement. This includes identifying potential bugs, suggesting performance optimizations, and ensuring that the code adheres to best practices.
+-   **Report Generation**: The AI Copilot can generate professional markdown reports from a user's code and results. This is a great way to document your work and share it with others.
 
 ---
 
 ## 3. Server & Deployment Architecture
 
 ### 3.1 Runtime Environment Injection
-To support modern containerized workflows (Docker/Cloud Run), Calcly separates build-time configuration from runtime configuration.
 
--   **Problem**: Vite apps are static. Environment variables are usually "baked in" at build time.
--   **Solution**:
-    -   `server.js` (Express) serves the app in production.
-    -   On every request to `index.html`, it reads the server's environment variables (`GEMINI_API_KEY`).
-    -   It injects a `<script>` block defining `window.GEMINI_API_KEY`.
--   **Client Access**: The app checks `window.GEMINI_API_KEY` first. This ensures that a single Docker image can be deployed to `dev`, `staging`, and `prod` with different keys without rebuilding.
+Calcly uses a clever strategy to inject environment variables at runtime, allowing the same Docker image to be used in different environments without modification.
+
+-   **Problem**: Vite applications are typically built statically, meaning that environment variables are baked into the code at build time. This can be problematic when deploying the same application to multiple environments (e.g., development, staging, production) with different configurations.
+-   **Solution**: The `server.js` file, which is an Express server, reads the `GEMINI_API_KEY` environment variable from the server's environment. It then injects this key into a `<script>` block in the `index.html` file, making it available to the client-side application as `window.GEMINI_API_KEY`.
 
 ### 3.2 Docker Strategy
--   **Base**: `node:20-slim`.
--   **Process**: Multi-stage build (install -> build -> serve).
--   **Security**: Runs as a non-root user (implicitly handled by cloud providers, adjustable in Dockerfile).
--   **Exposed Port**: 8080 (standard for Cloud Run).
+
+The Calcly IDE is designed to be deployed as a Docker container.
+
+-   **Base Image**: The Docker image is based on the `node:20-slim` image, which provides a lightweight and secure environment for running Node.js applications.
+-   **Multi-stage Build**: The Dockerfile uses a multi-stage build to minimize the size of the final image. The first stage installs the dependencies and builds the application, while the second stage copies the build artifacts and the `server.js` file into a clean image.
+-   **Security**: The application is run as a non-root user to improve security.
 
 ---
 
 ## 4. Technology Stack
--   **Framework**: React 19, Vite, TypeScript.
--   **UI**: Tailwind CSS, Lucide Icons, `react-resizable-panels`.
--   **Editor**: `@monaco-editor/react`.
--   **Math**: `nerdamer` (Symbolic), `mathjs` (Numerical), `plotly.js` (Vis).
--   **AI**: Google GenAI SDK (`@google/genai`).
+
+-   **Framework**: React 19, Vite, TypeScript
+-   **UI**: Tailwind CSS, Lucide Icons, `react-resizable-panels`
+-   **Editor**: `@monaco-editor/react`
+-   **Math**: `nerdamer` (Symbolic), `mathjs` (Numerical), `plotly.js` (Visualization)
+-   **AI**: Google GenAI SDK (`@google/genai`)
