@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LogEntry } from '../lib/runtime';
-import { Trash2, Sparkles, Terminal } from 'lucide-react';
+import { Trash2, Sparkles } from 'lucide-react';
 
 interface CommandWindowProps {
     logs: LogEntry[];

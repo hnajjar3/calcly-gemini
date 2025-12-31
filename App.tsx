@@ -133,14 +133,33 @@ const App: React.FC = () => {
     // Echo original input
     setLogs(prev => [...prev, { id: Date.now().toString(), type: 'info', message: `✨ "${input}"`, timestamp: Date.now() }]);
 
-    // Generate code
-    const jsCode = await generateCommand(input);
+    setIsAiProcessing(true);
+    try {
+      // Extract Context from Logs (Last 15 relevant entries)
+      const history = logs
+        .slice(-15)
+        .map(log => {
+          if (log.type === 'error') return `[Error] ${log.message}`;
+          if (log.message.startsWith('✨')) return `[User Smart] ${log.message.replace('✨ ', '').replace(/"/g, '')}`;
+          if (log.message.startsWith('>')) return `[User Code] ${log.message.replace('> ', '')}`;
+          if (log.message.startsWith('   →')) return `[Generated JS] ${log.message.replace('   → ', '')}`;
+          return null;
+        })
+        .filter(Boolean) as string[];
 
-    // Log generated code (so user learns)
-    setLogs(prev => [...prev, { id: Date.now().toString(), type: 'info', message: `   → ${jsCode}`, timestamp: Date.now() + 1 }]);
+      // Generate code with context
+      const jsCode = await generateCommand(input, history);
 
-    // Execute
-    await runtime.execute(jsCode);
+      // Log generated code (so user learns)
+      setLogs(prev => [...prev, { id: Date.now().toString(), type: 'info', message: `   → ${jsCode}`, timestamp: Date.now() + 1 }]);
+
+      // Execute
+      await runtime.execute(jsCode);
+    } catch (e: any) {
+      setLogs(prev => [...prev, { id: Date.now().toString(), type: 'error', message: `Smart Command Error: ${e.message}`, timestamp: Date.now() }]);
+    } finally {
+      setIsAiProcessing(false);
+    }
   };
 
   const addChatMessage = (sender: 'user' | 'ai', text: string) => {
@@ -514,7 +533,12 @@ const App: React.FC = () => {
 
                       <div className="flex-grow overflow-hidden relative">
                         <div className={`absolute inset-0 ${activeBottomTab === 'terminal' ? 'z-10' : 'z-0 invisible'}`}>
-                          <CommandWindow logs={logs} onExecute={handleCommand} onSmartExecute={handleSmartCommand} onClear={() => setLogs([])} />
+                          <CommandWindow
+                            logs={logs}
+                            onExecute={handleCommand}
+                            onSmartExecute={handleSmartCommand}
+                            onClear={() => setLogs([])}
+                          />
                         </div>
                         <div className={`absolute inset-0 ${activeBottomTab === 'equation' ? 'z-10' : 'z-0 invisible'}`}>
                           <EquationEditor onInsertCode={handleInsertEquationCode} />

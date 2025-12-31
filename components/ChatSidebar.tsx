@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, Code2, Minimize2 } from 'lucide-react';
+import { Send, Bot, User, Code2, Minimize2, Loader2 } from 'lucide-react';
 
 interface Message {
     id: string;
@@ -208,7 +208,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                                 disabled={(!input.trim() && !selectedImage) || isProcessing}
                                 className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-400 disabled:opacity-30 transition-colors p-1"
                             >
-                                <Send className="w-4 h-4" />
+                                {isProcessing ? <Loader2 className="w-4 h-4 animate-spin text-indigo-400" /> : <Send className="w-4 h-4" />}
                             </button>
                         </div>
                     </div>
