@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LogEntry } from '../lib/runtime';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Sparkles, Terminal } from 'lucide-react';
 
 interface CommandWindowProps {
     logs: LogEntry[];
     onExecute: (command: string) => void;
+    onSmartExecute?: (command: string) => void;
     onClear?: () => void;
 }
 
-export const CommandWindow: React.FC<CommandWindowProps> = ({ logs, onExecute, onClear }) => {
+export const CommandWindow: React.FC<CommandWindowProps> = ({ logs, onExecute, onSmartExecute, onClear }) => {
     const [input, setInput] = useState('');
+    const [isSmartMode, setIsSmartMode] = useState(false);
     const bottomRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -20,7 +22,11 @@ export const CommandWindow: React.FC<CommandWindowProps> = ({ logs, onExecute, o
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             if (input.trim()) {
-                onExecute(input);
+                if (isSmartMode && onSmartExecute) {
+                    onSmartExecute(input);
+                } else {
+                    onExecute(input);
+                }
                 setInput('');
             }
         }
@@ -29,7 +35,17 @@ export const CommandWindow: React.FC<CommandWindowProps> = ({ logs, onExecute, o
     return (
         <div className="h-full w-full flex flex-col bg-slate-900 border-t border-slate-700 font-mono text-sm">
             <div className="px-4 py-1.5 bg-slate-800 border-b border-slate-700 text-xs font-bold text-slate-400 uppercase tracking-wider flex justify-between items-center">
-                <span>Command Window</span>
+                <div className="flex items-center gap-2">
+                    <span>{isSmartMode ? 'Smart Console' : 'Terminal'}</span>
+                    <button
+                        onClick={() => setIsSmartMode(!isSmartMode)}
+                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full transition-all border ${isSmartMode ? 'bg-purple-500/10 border-purple-500/50 text-purple-400' : 'bg-slate-700 border-slate-600 text-slate-400 hover:text-slate-300'}`}
+                        title="Toggle AI Command Translation"
+                    >
+                        <Sparkles className="w-3 h-3" />
+                        <span className="text-[10px]">{isSmartMode ? 'AI ON' : 'AI OFF'}</span>
+                    </button>
+                </div>
                 {onClear && (
                     <button
                         onClick={onClear}
@@ -50,15 +66,17 @@ export const CommandWindow: React.FC<CommandWindowProps> = ({ logs, onExecute, o
                 ))}
                 <div ref={bottomRef} />
             </div>
-            <div className="p-2 bg-slate-800 flex items-center gap-2">
-                <span className="text-green-500 font-bold">›</span>
+            <div className={`p-2 flex items-center gap-2 border-t transition-colors ${isSmartMode ? 'bg-purple-900/20 border-purple-500/30' : 'bg-slate-800 border-slate-700'}`}>
+                <span className={`font-bold transition-colors ${isSmartMode ? 'text-purple-400' : 'text-green-500'}`}>
+                    {isSmartMode ? '✨' : '›'}
+                </span>
                 <input
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    className="flex-grow bg-transparent border-none outline-none text-white font-mono placeholder-slate-600"
-                    placeholder=">> Enter commands here..."
+                    className="flex-grow bg-transparent border-none outline-none text-white font-mono placeholder-slate-500"
+                    placeholder={isSmartMode ? "Ask AI to code (e.g. 'solve x^2-1')..." : ">> Enter JS commands..."}
                     autoFocus
                 />
             </div>
