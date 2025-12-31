@@ -92,15 +92,13 @@ Calcly uses a robust injection strategy to support "Build Once, Deploy Anywhere"
 
 ---
 
-## 🛠️ Architecture Overview
+## 📖 User Guide
 
--   **Frontend**: React 19 + TypeScript + Vite.
--   **Layout**: `react-resizable-panels` for the dockable interface.
--   **Runtime**: Ephemeral `iframe`-based sandbox for safe user code execution.
--   **Math Core**:
-    -   `@cortex-js/compute-engine` (Parsing/Compilation)
-    -   `mathlive` (UI)
-    -   `plotly.js` (Visualization)
+For a detailed walkthrough of all features, please see the [User Guide](./USER_GUIDE.md).
+
+## 🛠️ Architecture
+
+For a deep dive into the technical architecture, see the [Architecture](./ARCHITECTURE.md) documentation.
 
 ## 🔗 External Integrations
 
@@ -115,6 +113,5 @@ You can trigger the AI Copilot automatically by passing a query parameter to the
 
 *Note: The URL parameter is automatically cleared from the address bar after the request is submitted to prevent re-submission on page reload.*
 
-## 🛠️ Architecture Overview
 ## License
 MIT
