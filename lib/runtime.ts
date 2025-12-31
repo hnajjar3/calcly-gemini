@@ -393,6 +393,21 @@ class Runtime {
 
     private formatLogObject(a: any): string {
         try {
+            // Handle Arrays specifically for cleaner output
+            if (Array.isArray(a)) {
+                if (a.length > 10) {
+                    const firstFew = a.slice(0, 5).map(x => JSON.stringify(x)).join(', ');
+                    const last = JSON.stringify(a[a.length - 1]);
+                    return `[${firstFew}, ..., ${last}] (Array(${a.length}))`;
+                }
+            }
+            // Handle TypedArrays (Math.js matrices often use them)
+            if (a && a.buffer && a.length !== undefined) {
+                if (a.length > 10) {
+                    return `[TypedArray(${a.length})]`;
+                }
+            }
+
             return JSON.stringify(a);
         } catch (e) {
             return String(a);

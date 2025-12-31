@@ -251,6 +251,53 @@ export const reviewCode = async (code: string, userMessage: string, mathMode: 'n
   return JSON.parse(cleaned);
 };
 
+export const generateCommand = async (userInput: string): Promise<string> => {
+  // Specialized, valid JS one-liner prompt
+  const systemInstruction = `You are a Command Line Interface (CLI) Assistant.
+    Your task is to convert the User's Natural Language Command into a SINGLE LINE of Valid JavaScript.
+    
+    Environment:
+    - Math.js is available as 'math'.
+    - Nerdamer is available as 'nerdamer'.
+    - Algebrite is available as 'Algebrite'.
+    - 'print(...)' and 'plot(...)' are available.
+
+    Rules:
+    1. Output strictly ONLY the JavaScript code. No markdown, no json, no explanation.
+    2. Must be a single executable line (semicolons allowed).
+    3. Prefer Nerdamer for solving/algebra.
+    4. Prefer Algebrite for calculus.
+    
+    Examples:
+    Input: "solve x^2 - 1 = 0"
+    Output: print("Solutions:", nerdamer.solve('x^2 - 1 = 0', 'x').toString())
+
+    Input: "graph sin x from 0 to 10"
+    Output: { const x=[], y=[]; for(let i=0;i<=100;i++){ let v=i/10; x.push(v); y.push(Math.sin(v)); } plot([{x,y}]); }
+
+    Input: "set a to 50"
+    Output: var a = 50; print("a set to", a);
+    `;
+
+  const parts = [{ text: userInput }];
+
+  try {
+    const result = await generateWithFallback(
+      parts,
+      systemInstruction,
+      'gemini-3-flash', // Use Flash as requested
+      'gemini-2.5-flash'
+    );
+    let code = result.response.text().trim();
+    // Strip markdown if model misbehaves
+    code = code.replace(/```(javascript|js)?/g, '').replace(/```/g, '').trim();
+    return code;
+  } catch (e: any) {
+    console.error("Smart Command Error:", e);
+    return `print("Error interpreting command: ${e.message.replace(/"/g, "'")}")`;
+  }
+};
+
 const REPORT_SYSTEM_PROMPT = `You are a Scientific Publisher.
 Convert the provided code execution data into a professional "document-style" report.
 

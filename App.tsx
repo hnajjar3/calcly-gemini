@@ -27,7 +27,7 @@ import { PlotViewer, PlotViewerHandle } from './components/PlotViewer';
 import { ReportViewer } from './components/ReportViewer';
 import { ChatSidebar } from './components/ChatSidebar';
 import { runtime, LogEntry, Variable, PlotData, Interaction } from './lib/runtime';
-import { generateReport, generateCodeFromPrompt, editReport, AVAILABLE_MODELS } from './services/geminiService';
+import { generateReport, generateCodeFromPrompt, editReport, generateCommand, AVAILABLE_MODELS } from './services/geminiService';
 
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import { EquationEditor } from './components/EquationEditor';
@@ -127,6 +127,20 @@ const App: React.FC = () => {
     // Echo command
     setLogs(prev => [...prev, { id: Date.now().toString(), type: 'info', message: `> ${cmd}`, timestamp: Date.now() }]);
     await runtime.execute(cmd);
+  };
+
+  const handleSmartCommand = async (input: string) => {
+    // Echo original input
+    setLogs(prev => [...prev, { id: Date.now().toString(), type: 'info', message: `✨ "${input}"`, timestamp: Date.now() }]);
+
+    // Generate code
+    const jsCode = await generateCommand(input);
+
+    // Log generated code (so user learns)
+    setLogs(prev => [...prev, { id: Date.now().toString(), type: 'info', message: `   → ${jsCode}`, timestamp: Date.now() + 1 }]);
+
+    // Execute
+    await runtime.execute(jsCode);
   };
 
   const addChatMessage = (sender: 'user' | 'ai', text: string) => {
@@ -490,7 +504,7 @@ const App: React.FC = () => {
 
                       <div className="flex-grow overflow-hidden relative">
                         <div className={`absolute inset-0 ${activeBottomTab === 'terminal' ? 'z-10' : 'z-0 invisible'}`}>
-                          <CommandWindow logs={logs} onExecute={handleCommand} onClear={() => setLogs([])} />
+                          <CommandWindow logs={logs} onExecute={handleCommand} onSmartExecute={handleSmartCommand} onClear={() => setLogs([])} />
                         </div>
                         <div className={`absolute inset-0 ${activeBottomTab === 'equation' ? 'z-10' : 'z-0 invisible'}`}>
                           <EquationEditor onInsertCode={handleInsertEquationCode} />
