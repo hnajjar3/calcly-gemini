@@ -141,6 +141,11 @@ export const generateCodeFromPrompt = async (query: string, previousCode?: strin
             1. Generate CLEAN, EXECUTABLE JavaScript.
             2. Define variables at the top level.
             3. Do NOT wrap code in markdown blocks in the JSON output, just plain string.
+            4. **CRITICAL: FORMATTING**:
+               - Use proper newlines between statements.
+               - Do NOT minify or one-line the code.
+               - Add blank lines between logical sections.
+               - Ensure readability is high.
             
             MODE SPECIFIC INSTRUCTIONS:
             - IF MODE IS 'NUMERICAL':
