@@ -50,7 +50,7 @@ const App: React.FC = () => {
   const [chatMessages, setChatMessages] = useState<{ id: string, sender: 'user' | 'ai', text: string, timestamp: number }[]>([]);
   const [activeBottomTab, setActiveBottomTab] = useState<'terminal' | 'equation'>('terminal');
   const [activeInteraction, setActiveInteraction] = useState<Interaction | null>(null);
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-3-pro');
+  const [selectedModel, setSelectedModel] = useState<string>(AVAILABLE_MODELS[0].id);
 
   const [isMobile, setIsMobile] = useState(false);
 

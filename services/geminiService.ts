@@ -5,20 +5,20 @@ import { CodeGenerationResponse } from "../types";
 // Chat / Code Generation Models
 // Chat / Code Generation Models
 export const AVAILABLE_MODELS = [
-  { id: 'gemini-3-pro', name: 'Gemini 3 Pro' },
+  { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview' },
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
   { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
-  { id: 'gemini-3-flash', name: 'Gemini 3 Flash' },
   { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-  { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash Exp' },
+  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite' },
 ];
 
-const CHAT_MODEL_DEFAULT = 'gemini-3-pro';
-const CHAT_MODEL_FALLBACK = 'gemini-3-flash';
+const CHAT_MODEL_DEFAULT = 'gemini-3-pro-preview';
+const CHAT_MODEL_FALLBACK = 'gemini-3-flash-preview';
 
 // Report Generation Models
 const REPORT_MODEL_PRIMARY = 'gemini-2.5-pro';
 // Fallback to a known working model if the pro model fails
-const REPORT_MODEL_FALLBACK = 'gemini-3-flash';
+const REPORT_MODEL_FALLBACK = 'gemini-2.5-flash';
 
 // --- Helpers ---
 
@@ -285,7 +285,7 @@ export const generateCommand = async (userInput: string): Promise<string> => {
     const result = await generateWithFallback(
       parts,
       systemInstruction,
-      'gemini-3-flash', // Use Flash as requested
+      'gemini-3-flash-preview', // Use Flash as requested
       'gemini-2.5-flash'
     );
     let code = result.response.text().trim();
