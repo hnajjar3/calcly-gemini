@@ -80,7 +80,7 @@ const MatrixPreview: React.FC<{ heatmap: NonNullable<Variable['metadata']>['heat
     );
 };
 
-const VariableCard: React.FC<{ variable: Variable; onDelete?: (name: string) => void }> = ({ variable, onDelete }) => {
+const VariableCard: React.FC<{ variable: Variable; highlight?: 'new' | 'update' | null; onDelete?: (name: string) => void }> = ({ variable, highlight, onDelete }) => {
     const { name, value, metadata } = variable;
 
     const renderPreview = () => {
@@ -101,11 +101,16 @@ const VariableCard: React.FC<{ variable: Variable; onDelete?: (name: string) => 
     };
 
     return (
-        <div className="group relative bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/50 hover:border-indigo-500 dark:hover:border-indigo-500 rounded-lg p-3 transition-all hover:shadow-md cursor-pointer">
+        <div className={`group relative bg-white dark:bg-slate-800/80 border rounded-lg p-3 transition-all hover:shadow-md cursor-pointer
+            ${highlight === 'new' ? 'border-emerald-500 ring-1 ring-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]' :
+                highlight === 'update' ? 'border-yellow-500 ring-1 ring-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.3)]' :
+                    'border-slate-200 dark:border-slate-700/50 hover:border-indigo-500 dark:hover:border-indigo-500'}`}>
             <div className="flex justify-between items-start mb-2">
                 <div className="flex items-center gap-2">
                     <span className="font-bold text-slate-700 dark:text-slate-200 text-sm overflow-hidden text-ellipsis max-w-[100px]" title={name}>{name}</span>
                     <span className="text-[10px] uppercase text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">{metadata?.type || 'var'}</span>
+                    {highlight === 'new' && <span className="text-[10px] uppercase text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded font-bold animate-pulse">New</span>}
+                    {highlight === 'update' && <span className="text-[10px] uppercase text-yellow-600 bg-yellow-100 px-1.5 py-0.5 rounded font-bold animate-pulse">Upd</span>}
                 </div>
                 {onDelete && (
                     <button
@@ -133,6 +138,42 @@ interface WorkspaceViewerProps {
 
 export const WorkspaceViewer: React.FC<WorkspaceViewerProps> = ({ variables, onClear, onDeleteVariable }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const prevVariablesRef = useRef<Variable[]>([]);
+    const [highlights, setHighlights] = React.useState<Record<string, 'new' | 'update'>>({});
+
+    // Detect changes for highlighting
+    useEffect(() => {
+        const prev = prevVariablesRef.current;
+        const newHighlights: Record<string, 'new' | 'update'> = {};
+        let hasChanges = false;
+
+        variables.forEach(v => {
+            const oldVar = prev.find(p => p.name === v.name);
+            if (!oldVar) {
+                // New Variable
+                newHighlights[v.name] = 'new';
+                hasChanges = true;
+            } else if (JSON.stringify(v.value) !== JSON.stringify(oldVar.value)) {
+                // Updated Variable
+                newHighlights[v.name] = 'update';
+                hasChanges = true;
+            }
+        });
+
+        if (hasChanges) {
+            setHighlights(prevH => ({ ...prevH, ...newHighlights }));
+            // Clear bubbles after 2 seconds
+            setTimeout(() => {
+                setHighlights((current) => {
+                    const next = { ...current };
+                    Object.keys(newHighlights).forEach(k => delete next[k]);
+                    return next;
+                });
+            }, 2000);
+        }
+
+        prevVariablesRef.current = variables;
+    }, [variables]);
 
     const injectData = (name: string, data: any) => {
         const json = JSON.stringify(data);
@@ -213,7 +254,7 @@ export const WorkspaceViewer: React.FC<WorkspaceViewerProps> = ({ variables, onC
             <div className="flex-grow overflow-y-auto p-3">
                 <div className="space-y-2">
                     {variables.map((v) => (
-                        <VariableCard key={v.name} variable={v} onDelete={onDeleteVariable} />
+                        <VariableCard key={v.name} variable={v} highlight={highlights[v.name]} onDelete={onDeleteVariable} />
                     ))}
                     {variables.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-10 text-slate-400 text-center">
