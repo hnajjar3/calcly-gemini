@@ -49,7 +49,7 @@ const LatexPreview: React.FC<{ latex: string }> = ({ latex }) => {
         }
     }, [latex]);
 
-    return <div ref={containerRef} className="text-slate-700 dark:text-slate-200 text-lg overflow-x-auto py-1" />;
+    return <div ref={containerRef} className="text-slate-700 dark:text-slate-200 text-sm overflow-x-auto py-1" />;
 };
 
 const MatrixPreview: React.FC<{ heatmap: NonNullable<Variable['metadata']>['heatmap'] }> = ({ heatmap }) => {
