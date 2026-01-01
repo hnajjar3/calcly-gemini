@@ -164,6 +164,10 @@ export const PlotViewer = forwardRef<PlotViewerHandle, PlotViewerProps>(({ plots
             : (userLayout.title ? { text: userLayout.title, font: { color: textColor, size: 18 } } : defaultLayout.title)
     };
 
+    // 3. Config Merging
+    const defaultConfig = { responsive: true, displaylogo: false };
+    const mergedConfig = { ...defaultConfig, ...(latestPlot.config || {}) };
+
     return (
         <div className="h-full w-full flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 overflow-hidden">
             <div className="px-4 py-2 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shrink-0">
@@ -184,9 +188,10 @@ export const PlotViewer = forwardRef<PlotViewerHandle, PlotViewerProps>(({ plots
                     ref={plotRef}
                     data={latestPlot.data}
                     layout={mergedLayout}
+                    frames={latestPlot.frames} // Pass frames for animation
                     useResizeHandler={true}
                     style={{ width: '100%', height: '100%' }}
-                    config={{ responsive: true, displaylogo: false }}
+                    config={mergedConfig}
                 />
             </div>
         </div>

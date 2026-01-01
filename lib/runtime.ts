@@ -10,7 +10,7 @@ interface RuntimeContext {
         error: (...args: any[]) => void;
         warn: (...args: any[]) => void;
     };
-    plot: (data: any[], layout?: any) => void;
+    plot: (data: any[], layout?: any, frames?: any[], config?: any) => void;
     math: typeof math;
     nerdamer: any;
     Algebrite: any;
@@ -57,6 +57,8 @@ export interface PlotData {
     id: string;
     data: any[];
     layout: any;
+    frames?: any[]; // For animations
+    config?: any;   // For plot configuration
     timestamp: number;
     interactionId?: string; // Link plot to interaction
 }
@@ -371,15 +373,19 @@ class Runtime {
             });
         };
 
-        const plot = (data: any[], layout?: any) => {
+        const plot = (data: any[], layout?: any, frames?: any[], config?: any) => {
             // Deep clone to detach from iframe context
             const safeData = JSON.parse(JSON.stringify(data));
             const safeLayout = JSON.parse(JSON.stringify(layout || {}));
+            const safeFrames = frames ? JSON.parse(JSON.stringify(frames)) : undefined;
+            const safeConfig = config ? JSON.parse(JSON.stringify(config)) : undefined;
 
             this.onPlot({
                 id: uuidv4(),
                 data: safeData,
                 layout: safeLayout,
+                frames: safeFrames,
+                config: safeConfig,
                 timestamp: Date.now(),
             });
         };

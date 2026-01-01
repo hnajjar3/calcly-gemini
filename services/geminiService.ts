@@ -182,6 +182,38 @@ export const generateCodeFromPrompt = async (query: string, previousCode?: strin
                     plot([{x, y}]);
                   });
                   \`
+            - IF USER ASKS FOR ANIMATION (e.g. "time evolution", "moving", "animated"):
+                - Use Plotly Frames.
+                - Structure:
+                  1. Define \`data\` (initial state).
+                  2. Define \`frames\` array. Each frame is { name: 'f1', data: [...] }.
+                  3. Define \`layout.updatemenus\` with "Play" and "Pause" buttons.
+                  4. CALL \`plot(data, layout, frames)\`.
+                - Example:
+                  \`
+                  // Initial Data
+                  const data = [{x: [0], y: [0], mode: 'markers'}];
+                  // Frames
+                  const frames = [];
+                  for (let i = 0; i < 50; i++) {
+                    frames.push({
+                      name: i,
+                      data: [{ x: [i], y: [i*i] }]
+                    });
+                  }
+                  // Layout with Play Button
+                  const layout = {
+                    xaxis: {range: [0, 50]},
+                    yaxis: {range: [0, 2500]},
+                    updatemenus: [{
+                      type: 'buttons',
+                      buttons: [
+                        { label: 'Play', method: 'animate', args: [null] }
+                      ]
+                    }]
+                  };
+                  plot(data, layout, frames);
+                  \`
             
             Output JSON ONLY.`;
 
