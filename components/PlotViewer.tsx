@@ -101,17 +101,21 @@ export const PlotViewer = forwardRef<PlotViewerHandle, PlotViewerProps>(({ plots
 
     // Intelligent Layout Merging
     // 1. Base Defaults (Theming)
-    // Use High Contrast White for Dark Mode to ensure visibility
     const textColor = theme === 'dark' ? '#ffffff' : '#1e293b';
     const gridColor = theme === 'dark' ? '#334155' : '#e2e8f0';
+
+    // Detect 3D Plot
+    const is3D = latestPlot.data.some((trace: any) =>
+        ['scatter3d', 'surface', 'mesh3d', 'cone', 'streamtube', 'volume', 'isosurface'].includes(trace.type)
+    );
 
     const defaultLayout = {
         autosize: true,
         paper_bgcolor: 'transparent',
         plot_bgcolor: 'transparent',
         font: { color: textColor, family: 'sans-serif', size: 12 },
-        // Aggressive margins to ensure labels are visible
-        margin: { l: 80, r: 40, t: 80, b: 80, pad: 4 },
+        // Use tighter margins for 3D to maximize space, standard margins for 2D
+        margin: is3D ? { l: 0, r: 0, t: 40, b: 0, pad: 0 } : { l: 80, r: 40, t: 80, b: 80, pad: 4 },
         xaxis: {
             gridcolor: gridColor,
             zerolinecolor: gridColor,
@@ -123,6 +127,15 @@ export const PlotViewer = forwardRef<PlotViewerHandle, PlotViewerProps>(({ plots
             zerolinecolor: gridColor,
             automargin: true,
             title: { font: { color: textColor, size: 14 }, standoff: 20 }
+        },
+        // 3D Scene Config
+        scene: {
+            xaxis: { gridcolor: gridColor, zerolinecolor: gridColor, title: { font: { color: textColor } }, tickcolor: textColor },
+            yaxis: { gridcolor: gridColor, zerolinecolor: gridColor, title: { font: { color: textColor } }, tickcolor: textColor },
+            zaxis: { gridcolor: gridColor, zerolinecolor: gridColor, title: { font: { color: textColor } }, tickcolor: textColor },
+            camera: {
+                eye: { x: 1.5, y: 1.5, z: 1.5 } // Slightly zoomed out default
+            }
         },
         // Ensure main title color is set
         title: {
@@ -146,7 +159,6 @@ export const PlotViewer = forwardRef<PlotViewerHandle, PlotViewerProps>(({ plots
         xaxis: {
             ...defaultLayout.xaxis,
             ...(userLayout.xaxis || {}),
-            // Re-apply critical title color if user provided a string title or object title
             title: typeof userLayout.xaxis?.title === 'object'
                 ? { ...defaultLayout.xaxis.title, ...userLayout.xaxis.title }
                 : (userLayout.xaxis?.title ? { text: userLayout.xaxis.title, font: { color: textColor } } : defaultLayout.xaxis.title)
@@ -158,7 +170,15 @@ export const PlotViewer = forwardRef<PlotViewerHandle, PlotViewerProps>(({ plots
                 ? { ...defaultLayout.yaxis.title, ...userLayout.yaxis.title }
                 : (userLayout.yaxis?.title ? { text: userLayout.yaxis.title, font: { color: textColor } } : defaultLayout.yaxis.title)
         },
-        // Fix Main Title Color (Case: User passes string "Title" which overwrites default object)
+        // Deep merge Scene for 3D
+        scene: {
+            ...defaultLayout.scene,
+            ...(userLayout.scene || {}),
+            xaxis: { ...defaultLayout.scene.xaxis, ...(userLayout.scene?.xaxis || {}) },
+            yaxis: { ...defaultLayout.scene.yaxis, ...(userLayout.scene?.yaxis || {}) },
+            zaxis: { ...defaultLayout.scene.zaxis, ...(userLayout.scene?.zaxis || {}) },
+        },
+        // Fix Main Title Color
         title: typeof userLayout.title === 'object'
             ? { ...defaultLayout.title, ...userLayout.title }
             : (userLayout.title ? { text: userLayout.title, font: { color: textColor, size: 18 } } : defaultLayout.title)
