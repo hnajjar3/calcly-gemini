@@ -227,6 +227,12 @@ const App: React.FC = () => {
     handleChatSubmit("Please review the current code. Check for errors, bugs, or improvements, and fix them if necessary.");
   };
 
+  const handleDebugError = (error: string) => {
+    setIsLeftCollapsed(false); // Open Chat Sidebar
+    const debugPrompt = `I encountered this error: "${error}". Can you help me fix my code?`;
+    handleChatSubmit(debugPrompt);
+  };
+
   const plotViewerRef = React.useRef<PlotViewerHandle>(null);
 
   const handlePublish = async () => {
@@ -532,12 +538,14 @@ const App: React.FC = () => {
                       </div>
 
                       <div className="flex-grow overflow-hidden relative">
+
                         <div className={`absolute inset-0 ${activeBottomTab === 'terminal' ? 'z-10' : 'z-0 invisible'}`}>
                           <CommandWindow
                             logs={logs}
                             onExecute={handleCommand}
                             onSmartExecute={handleSmartCommand}
                             onClear={() => setLogs([])}
+                            onDebug={handleDebugError}
                           />
                         </div>
                         <div className={`absolute inset-0 ${activeBottomTab === 'equation' ? 'z-10' : 'z-0 invisible'}`}>
