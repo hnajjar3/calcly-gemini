@@ -9,3 +9,8 @@ declare module 'algebrite' {
     const Algebrite: any;
     export default Algebrite;
 }
+
+declare module '*?raw' {
+    const content: string;
+    export default content;
+}
