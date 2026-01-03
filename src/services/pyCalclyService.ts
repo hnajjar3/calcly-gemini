@@ -11,6 +11,7 @@ export interface ComputeRequest {
     timeout_sec?: number;
     series_order?: number;
     kwargs?: Record<string, any>;
+    args?: any[];
 }
 
 export interface ComputeResponse {
