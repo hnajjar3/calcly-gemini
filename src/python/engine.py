@@ -21,7 +21,7 @@ Public API
     * get_engine() -> SympyEngine
 """
 
-from typing import Any, Dict, List, Literal, Optional, Set
+from typing import Any, Dict, List, Literal, Optional, Set, Union
 import importlib
 import json
 import sympy as sp
@@ -101,6 +101,7 @@ class ComputeRequest(BaseModel):
     timeout_sec: float = Field(2.0, ge=0.1, le=60.0, description="Computation timeout per request (ignored in sync pyodide).")
     series_order: Optional[int] = Field(6, ge=1, le=50, description="Truncation order for 'series' task (default 6).")
     kwargs: Dict[str, Any] = Field(default_factory=dict, description="Additional keyword arguments for SymPy calls.")
+    args: Optional[List[Any]] = Field(default=None, description="Generic positional arguments for the task. Strings are sympified.")
 
 class ComputeResponse(BaseModel):
     result_str: str
@@ -123,6 +124,21 @@ def _resolve_sympy_callable(op: str):
     if not isinstance(op, str) or not op.strip():
         return None
     name = op.strip()
+
+    # Aliases
+    alias_map = {
+        "differentiate": "diff",
+        "derivative": "diff",
+        "d": "diff",
+        "laplace": "laplace_transform",
+        "invlaplace": "inverse_laplace_transform",
+        "fourier": "fourier_transform",
+        "invfourier": "inverse_fourier_transform",
+        "z": "ztransform",
+        "invz": "inverse_ztransform",
+    }
+    name = alias_map.get(name, name)
+
     base_mod = sp
 
     # Fast path: top-level attribute on sympy
@@ -171,6 +187,24 @@ def _predeclare_symbols(names: Set[str]) -> Dict[str, Any]:
 def _parse_expr(expr: str, sym_names: Set[str]) -> sp.Expr:
     return sp.sympify(expr, locals=_predeclare_symbols(sym_names), evaluate=True)
 
+def _parse_arg(arg: Any, sym_names: Set[str]) -> Any:
+    """
+    Recursively parse arguments.
+    - Strings are attempted to be sympified.
+    - Lists are converted to tuples (SymPy usually expects tuples for bounds etc.)
+    """
+    if isinstance(arg, str):
+        # Try to sympify, if fail, keep as string (some args might be string literals)
+        try:
+            return sp.sympify(arg, locals=_predeclare_symbols(sym_names))
+        except Exception:
+            return arg
+    elif isinstance(arg, list):
+        return tuple(_parse_arg(a, sym_names) for a in arg)
+    elif isinstance(arg, dict):
+         return {k: _parse_arg(v, sym_names) for k, v in arg.items()}
+    else:
+        return arg
 
 # ----------------------------------------------------------------------------
 # Compute Core
@@ -186,6 +220,16 @@ def _do_compute(payload: ComputeRequest) -> ComputeResponse:
     if payload.solve_for:
         sym_names.add(payload.solve_for)
 
+    # Heuristic: Scan args for potential symbol names if they are simple strings
+    if payload.args:
+        for a in payload.args:
+             if isinstance(a, str) and a.isidentifier():
+                 sym_names.add(a)
+             elif isinstance(a, list):
+                 for sub_a in a:
+                     if isinstance(sub_a, str) and sub_a.isidentifier():
+                         sym_names.add(sub_a)
+
     expr = _parse_expr(payload.expr, sym_names)
 
     # Task dispatch
@@ -195,52 +239,62 @@ def _do_compute(payload: ComputeRequest) -> ComputeResponse:
     v = sp.Symbol(payload.var) if payload.var else None
     s_for = sp.Symbol(payload.solve_for) if payload.solve_for else (v if v else None)
 
-    if payload.task == "simplify":
+    # Legacy explicit handling for special formatting or complex logic
+    # We keep these for backward compatibility and specific behaviors (like limit fallback)
+
+    # ... but if 'args' is present, we prefer the generic path for most things unless it's a special logic case.
+
+    if payload.task == "simplify" and not payload.args:
         res = sp.simplify(expr)
         if payload.subs:
             res = res.subs({sp.Symbol(k): val for k, val in payload.subs.items()})
 
-    elif payload.task == "expand":
+    elif payload.task == "expand" and not payload.args:
         res = sp.expand(expr)
 
-    elif payload.task == "factor":
+    elif payload.task == "factor" and not payload.args:
         res = sp.factor(expr)
 
-    elif payload.task == "collect":
+    elif payload.task == "collect" and not payload.args:
         if v is None:
             raise ValueError("Provide 'var' for collect.")
         res = sp.collect(expr, v)
 
-    elif payload.task == "cancel":
+    elif payload.task == "cancel" and not payload.args:
         res = sp.cancel(expr)
 
-    elif payload.task == "apart":
+    elif payload.task == "apart" and not payload.args:
         res = sp.apart(expr, v) if v is not None else sp.apart(expr)
 
-    elif payload.task == "together":
+    elif payload.task == "together" and not payload.args:
         res = sp.together(expr)
 
-    elif payload.task == "trigsimp":
+    elif payload.task == "trigsimp" and not payload.args:
         res = sp.trigsimp(expr)
 
-    elif payload.task == "ratsimp":
+    elif payload.task == "ratsimp" and not payload.args:
         res = sp.ratsimp(expr)
 
-    elif payload.task == "solve":
+    elif payload.task == "solve" and not payload.args:
         target = expr if isinstance(expr, sp.Equality) else sp.Eq(expr, 0)
         if s_for is None:
             free = sorted(expr.free_symbols, key=lambda x: x.name)
             if not free:
-                raise ValueError("No variable to solve for; provide 'solve_for' or 'var'.")
-            s_for = free[0]
-        res = sp.solve(target, s_for, dict=True)
+                # raise ValueError("No variable to solve for; provide 'solve_for' or 'var'.")
+                # Fallback to generic solve which might handle it
+                pass
+            else:
+                s_for = free[0]
 
-    elif payload.task == "diff":
+        if s_for:
+            res = sp.solve(target, s_for, dict=True)
+
+    elif payload.task == "diff" and not payload.args:
         if v is None:
             raise ValueError("Provide 'var' for differentiation.")
         res = sp.diff(expr, v)
 
-    elif payload.task == "integrate":
+    elif payload.task == "integrate" and not payload.args:
         if v is None:
             raise ValueError("Provide 'var' for integration.")
         res = sp.integrate(expr, v)
@@ -250,7 +304,7 @@ def _do_compute(payload: ComputeRequest) -> ComputeResponse:
             expr = expr.subs({sp.Symbol(k): val for k, val in payload.subs.items()})
         res = sp.N(expr)
 
-    elif payload.task == "limit":
+    elif payload.task == "limit" and not payload.args:
         sym = v or (sorted(expr.free_symbols, key=lambda x: x.name)[0] if expr.free_symbols else sp.Symbol("x"))
         point = payload.subs.get(str(sym), 0) if payload.subs else 0
         meta["limit_point"] = point
@@ -263,16 +317,20 @@ def _do_compute(payload: ComputeRequest) -> ComputeResponse:
         else:
             res = sp.limit(expr2, sym, point)
 
-    elif payload.task == "series":
+    elif payload.task == "series" and not payload.args:
         sym = v or (sorted(expr.free_symbols, key=lambda x: x.name)[0] if expr.free_symbols else sp.Symbol("x"))
         order = int(payload.series_order or 6)
         center = (payload.subs or {}).get(str(sym), 0)
         res = sp.series(expr, sym, center, order).removeO()
 
     elif payload.task == "subs":
-        if not payload.subs:
-            raise ValueError("Provide 'subs' mapping for substitution.")
-        res = expr.subs({sp.Symbol(k): val for k, val in payload.subs.items()})
+        if not payload.subs and not payload.args:
+             raise ValueError("Provide 'subs' mapping for substitution.")
+        if payload.subs:
+             res = expr.subs({sp.Symbol(k): val for k, val in payload.subs.items()})
+        else:
+             # Let generic handle args based subs
+             pass
 
     elif payload.task == "det":
         if not hasattr(expr, "det"):
@@ -290,75 +348,92 @@ def _do_compute(payload: ComputeRequest) -> ComputeResponse:
         else:
             raise ValueError("Expression is not a matrix; cannot transpose.")
 
-    else:
-        # Dynamic fallback
-        op = (payload.task or "").strip()
-        alias = {
-            "differentiate": "diff",
-            "derivative": "diff",
-            "d": "diff",
-            "laplace": "laplace_transform",
-            "invlaplace": "inverse_laplace_transform",
-            "fourier": "fourier_transform",
-            "invfourier": "inverse_fourier_transform",
-            "z": "ztransform",
-            "invz": "inverse_ztransform",
-        }
-        op = alias.get(op, op)
-        func = _resolve_sympy_callable(op)
+    # Generic Fallback / Main Path
+    if res is None:
+        func = _resolve_sympy_callable(payload.task)
         if func is None:
-            raise ValueError(f"Unsupported SymPy operation: {payload.task}")
+             raise ValueError(f"Unsupported SymPy operation: {payload.task}")
 
-        sym1 = sp.Symbol(payload.var) if payload.var else None
-        sym2 = sp.Symbol(payload.solve_for) if payload.solve_for else None
-        kwargs: dict = dict(payload.kwargs or {})
-        if op == "laplace_transform":
-            kwargs.setdefault("noconds", True)
+        # Prepare arguments
+        # Always start with 'expr'
+        call_args = [expr]
 
-        last_error: Exception | None = None
-        # 1) Try (expr, sym1, sym2, **kwargs)
-        if sym1 is not None and sym2 is not None:
-            try:
-                res = func(expr, sym1, sym2, **kwargs)
-            except TypeError as e:
-                last_error = e
-            else:
-                pass
-        else:
-            res = None
-        # 1b) Swap
-        if 'inverse' in op and (sym1 is not None and sym2 is not None) and (res is None):
-            try:
-                res = func(expr, sym2, sym1, **kwargs)
-            except TypeError as e:
-                last_error = e
+        # Add explicitly provided generic args
+        if payload.args:
+            parsed_args = [_parse_arg(a, sym_names) for a in payload.args]
+            call_args.extend(parsed_args)
 
-        # 2) Try (expr, sym1)
-        if res is None and sym1 is not None:
-            try:
-                res = func(expr, sym1)
-            except TypeError as e:
-                last_error = e
+        # If no generic args, try legacy fallback logic (var, solve_for)
+        # only if we haven't already handled it above
+        elif not payload.args:
+             # Legacy Fallback Logic
+            sym1 = sp.Symbol(payload.var) if payload.var else None
+            sym2 = sp.Symbol(payload.solve_for) if payload.solve_for else None
 
-        # 3) Try (expr,)
+            # Special case for laplace transform options
+            if "laplace" in payload.task:
+                 payload.kwargs.setdefault("noconds", True)
+
+            # Try to guess signature
+            success = False
+            last_error = None
+
+            # 1) Try (expr, sym1, sym2, **kwargs)
+            if sym1 is not None and sym2 is not None:
+                try:
+                    res = func(expr, sym1, sym2, **payload.kwargs)
+                    success = True
+                except TypeError as e:
+                    last_error = e
+
+            # 1b) Swap
+            if not success and 'inverse' in payload.task and (sym1 is not None and sym2 is not None):
+                try:
+                    res = func(expr, sym2, sym1, **payload.kwargs)
+                    success = True
+                except TypeError as e:
+                    last_error = e
+
+            # 2) Try (expr, sym1)
+            if not success and sym1 is not None:
+                try:
+                    res = func(expr, sym1, **payload.kwargs)
+                    success = True
+                except TypeError as e:
+                    last_error = e
+
+            # 3) Try (expr)
+            if not success:
+                try:
+                    res = func(expr, **payload.kwargs)
+                    success = True
+                except Exception as e:
+                    last_error = e
+
+            if not success:
+                 raise ValueError(f"Unable to call sympy.{payload.task} with provided arguments: {last_error}")
+
+        # Execute Generic Call if we built call_args
         if res is None:
-            try:
-                res = func(expr)
-            except Exception as e:
-                last_error = e
-
-        if res is None:
-            raise ValueError(f"Unable to call sympy.{op} with provided arguments: {last_error}")
+             res = func(*call_args, **payload.kwargs)
 
     # Serialize
-    if payload.task == "solve":
+    # Special handling for solve (list of dicts)
+    if payload.task == "solve" and isinstance(res, list):
         result_str = str(res)
         result_latex = sp.latex(res)
     else:
         result_str = str(res)
-        result_latex = (res if isinstance(res, str) else sp.latex(res)) if res is not None else None
+        try:
+            result_latex = (res if isinstance(res, str) else sp.latex(res)) if res is not None else None
+        except:
+            result_latex = result_str
 
-    meta["free_symbols"] = sorted([s.name for s in expr.free_symbols])
+    if hasattr(expr, "free_symbols"):
+        meta["free_symbols"] = sorted([s.name for s in expr.free_symbols])
+    else:
+        meta["free_symbols"] = []
+
     return ComputeResponse(result_str=result_str, result_latex=result_latex, meta=meta)
 
 

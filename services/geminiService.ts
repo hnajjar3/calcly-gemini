@@ -134,8 +134,7 @@ export const generateCodeFromPrompt = async (query: string, previousCode?: strin
                 - 'plot(data, layout)' (Plotly.js)
                 - 'interact(controls, callback)' (Interactive Plots)
                 - 'math' (Math.js) - Use for Numerical Mode
-                - 'nerdamer' (Nerdamer) - Use for Symbolic Algebra/Solving
-                - 'Algebrite' (Algebrite) - Use for Symbolic Evaluation/CAS
+                - 'pycalcly.sympy.compute(req)' - Use for POWERFUL Symbolic Math (SymPy) via Pyodide.
             
             Instructions:
             1. Generate CLEAN, EXECUTABLE JavaScript.
@@ -150,70 +149,44 @@ export const generateCodeFromPrompt = async (query: string, previousCode?: strin
             MODE SPECIFIC INSTRUCTIONS:
             - IF MODE IS 'NUMERICAL':
                 - Use 'math.evaluate()' / 'math.matrix()' for complex calculations.
-            - IF MODE IS 'SYMBOLIC':
-                - Use 'nerdamer' (preferred for solving equations).
-                - Use 'Algebrite' (preferred for calculus/integrals, simplification).
-                  - Ex: \`const res = Algebrite.run('simplify(a+a)');\`
-                  - Ex: \`const area = Algebrite.run('defint(x^2, x, 0, 1)');\`
+            - IF MODE IS 'SYMBOLIC' or 'AUTO':
+                - **PREFERRED: Use 'pycalcly.sympy.compute' for ANY symbolic math.**
+                - The 'req' object has the structure:
+                  {
+                    expr: string, // The expression to operate on (e.g. "sin(t)")
+                    task: string, // The SymPy function name (e.g. "simplify", "solve", "diff", "integrate", "laplace_transform", "limit")
+                    args?: any[], // Optional positional arguments for the function
+                    kwargs?: object, // Optional keyword arguments
+                    var?: string, // [Legacy] specific variable
+                    solve_for?: string // [Legacy] specific variable to solve for
+                  }
+
+                - **EXAMPLES for pycalcly**:
+                  1. Solve:
+                     \`const res = await pycalcly.sympy.compute({ expr: "x^2 - 1", task: "solve", solve_for: "x" });\`
+                     \`print("Roots:", res.result_str);\`
+
+                  2. Integrate with bounds (Definite Integral):
+                     \`const res = await pycalcly.sympy.compute({ expr: "x^2", task: "integrate", args: [["x", 0, 1]] });\`
+                     \`print("Area:", res.result_str);\`
+
+                  3. Laplace Transform:
+                     \`const res = await pycalcly.sympy.compute({ expr: "sin(t)", task: "laplace_transform", args: ["t", "s"] });\`
+                     \`print("Laplace:", res.result_str);\`
+
+                  4. Limit:
+                     \`const res = await pycalcly.sympy.compute({ expr: "sin(x)/x", task: "limit", args: ["x", 0] });\`
+                     \`print("Limit:", res.result_str);\`
+
                 - **OUTPUT FORMATTING**:
                   - Always \`print()\` or \`console.log()\` your final results.
-                  - Use descriptive labels. Ex: \`print('Solutions:', solutions.toString())\`.
-                  - Ensure complex objects are converted to strings if needed.
-            - IF MODE IS 'AUTO' (Recommended):
-                - INTELLIGENTLY MIX libraries.
-                - **Solving**: Use 'nerdamer' ('solve').
-                - **Calculus (Integrals)**: Use 'Algebrite'. Ex: \`Algebrite.run('defint(x^2, x, 0, 1)')\`.
-                - **Deep CAS/Simplification**: Use 'Algebrite'.
-                - **Plotting/Matrices**: Use 'math.js'.
-                - Example: "Simplify x+x and then plot it from 0 to 10"
-                    \`
-                    const simp = Algebrite.run('x+x'); // "2x"
-                    // Parse "2x" or use a lambda
-                    const f = (val) => 2 * val; 
-                    // Plot loop...
-                    \`
+                  - Use descriptive labels.
+                  - Use 'res.result_latex' if you want to show LaTeX.
+
             - IF USER ASKS FOR INTERACTIVE PLOTS:
                 - Use 'interact({ param: { min, max, value, step } }, (values) => { ... plot(...) })'.
-                - Example:
-                  \`
-                  interact({ f: { min: 1, max: 10, value: 5 } }, ({ f }) => {
-                    const x = []; const y = [];
-                    for(let i=0; i<100; i++) { x.push(i/10); y.push(Math.sin(f * i/10)); }
-                    plot([{x, y}]);
-                  });
-                  \`
-            - IF USER ASKS FOR ANIMATION (e.g. "time evolution", "moving", "animated"):
-                - Use Plotly Frames.
-                - Structure:
-                  1. Define \`data\` (initial state).
-                  2. Define \`frames\` array. Each frame is { name: 'f1', data: [...] }.
-                  3. Define \`layout.updatemenus\` with "Play" and "Pause" buttons.
-                  4. CALL \`plot(data, layout, frames)\`.
-                - Example:
-                  \`
-                  // Initial Data
-                  const data = [{x: [0], y: [0], mode: 'markers'}];
-                  // Frames
-                  const frames = [];
-                  for (let i = 0; i < 50; i++) {
-                    frames.push({
-                      name: i,
-                      data: [{ x: [i], y: [i*i] }]
-                    });
-                  }
-                  // Layout with Play Button
-                  const layout = {
-                    xaxis: {range: [0, 50]},
-                    yaxis: {range: [0, 2500]},
-                    updatemenus: [{
-                      type: 'buttons',
-                      buttons: [
-                        { label: 'Play', method: 'animate', args: [null] }
-                      ]
-                    }]
-                  };
-                  plot(data, layout, frames);
-                  \`
+            - IF USER ASKS FOR ANIMATION:
+                - Use Plotly Frames mechanism (data, layout, frames).
             
             Output JSON ONLY.`;
 
@@ -250,13 +223,13 @@ export const reviewCode = async (code: string, userMessage: string, mathMode: 'n
             Analyze the user's request and the current code.
             
             Environment:
-            - Browser JS with 'math' (Math.js), 'nerdamer' (Nerdamer), 'Algebrite' (Algebrite) available.
+            - Browser JS with 'math' (Math.js), 'nerdamer', 'Algebrite', 'pycalcly' available.
             - 'plot(data, layout)' is available.
             - Current Mode: ${mathMode}
             
             Tasks:
-            1. Use 'Algebrite.run(encoded_string)' if user asks for CAS features better suited for Algebrite.
-            2. Use 'nerdamer(...)' for standard solving.
+            1. Suggest improvements.
+            2. If symbolic math is needed, recommend 'pycalcly.sympy.compute'.
             3. Fix errors if found.
             
             Output JSON: { "message": "Natural language response...", "fixedCode": "Optional string if code should be updated" }`;
@@ -293,6 +266,7 @@ export const generateCommand = async (userInput: string, history: string[] = [])
     - Nerdamer is available as 'nerdamer'.
     - Algebrite is available as 'Algebrite'.
     - 'print(...)' and 'plot(...)' are available.
+    - 'pycalcly.sympy.compute({ ... })' is available (returns Promise, so use await if possible, or just print promise, but ideally CLI is sync-ish so prefer simple libs unless user asks for complex).
 
     Rules:
     1. Output strictly ONLY the JavaScript code. No markdown, no json, no explanation.
