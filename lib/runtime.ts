@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as math from 'mathjs';
 import nerdamer from 'nerdamer/all.min';
 import Algebrite from 'algebrite';
+import { pyCalclyService } from '../src/services/pyCalclyService';
 
 // Define the shape of our runtime context
 interface RuntimeContext {
@@ -14,6 +15,7 @@ interface RuntimeContext {
     math: typeof math;
     nerdamer: any;
     Algebrite: any;
+    pycalcly: any;
     [key: string]: any; // Allow user variables
 }
 
@@ -446,6 +448,14 @@ class Runtime {
         win.nerdamer = nerdamer;
         win.Algebrite = Algebrite;
 
+        // Inject PyCalcly
+        win.pycalcly = {
+            sympy: {
+                compute: (req: any) => pyCalclyService.compute(req),
+                batch: (req: any) => pyCalclyService.batch(req)
+            }
+        };
+
         // Capture initial state
         this.initialKeys = new Set(Object.getOwnPropertyNames(win));
         for (const key in win) {
@@ -517,7 +527,7 @@ class Runtime {
     }
 
     private harvestVariables(win: any, code: string) {
-        const injected = new Set(['plot', 'print', 'math', 'nerdamer', 'Algebrite', 'console', 'interact']);
+        const injected = new Set(['plot', 'print', 'math', 'nerdamer', 'Algebrite', 'console', 'interact', 'pycalcly']);
         const vars: Record<string, any> = {};
         const currentKeys = Object.getOwnPropertyNames(win);
 
