@@ -467,6 +467,15 @@ class Runtime {
         if (!this.iframe) this.initIframe();
         const win = this.iframe!.contentWindow as any;
 
+        // Hook for async harvest
+        win.__harvest = (asyncCode?: string) => {
+             // For async, we re-scan the *processed* code that was executed, or we scan the original?
+             // Since we use exports in async wrapper, the variables should be in 'window' now.
+             // But 'harvestVariables' logic for regex scan assumes declarations.
+             // If we rely on exports, we just need to scan 'window' keys against initialKeys.
+             this.harvestVariables(win, asyncCode || "");
+        };
+
         // Define interact function in the iframe scope
         win.interact = (controls: Record<string, ControlDef>, callback: Function) => {
             const id = uuidv4();
@@ -507,7 +516,10 @@ class Runtime {
             script.textContent = processedCode;
             doc.body.appendChild(script);
 
-            this.harvestVariables(win, processedCode);
+            // Only synchronous harvest if NOT async wrapper (which calls __harvest itself)
+            if (!code.includes('await')) {
+                this.harvestVariables(win, processedCode);
+            }
         } catch (e: any) {
             safeLog('error', e.toString());
         }
@@ -520,14 +532,46 @@ class Runtime {
 
         // 2. Convert const/let to var to allow redeclaration, EXCEPT in for-loops
         // We want to preserve 'for (let i...' because that creates necessary closure scopes
-        return code.replace(/(for\s*\(\s*let\b)|(\b(const|let)\b)/g, (_match, forGroup, _varGroup) => {
+        code = code.replace(/(for\s*\(\s*let\b)|(\b(const|let)\b)/g, (_match, forGroup, _varGroup) => {
             if (forGroup) return forGroup; // Keep 'for (let' as is
             return 'var'; // Replace other const/let with var
         });
+
+        // 3. Async Wrapper Logic
+        if (code.includes('await')) {
+            // Extract variable names to export from the PROCESSED code (where const/let are now var)
+            // We match 'var x' but NOT inside 'for (let x...)' because step 2 preserved 'let' there.
+            const variableRegex = /(?:var)\s+([a-zA-Z_$][0-9a-zA-Z_$]*)/g;
+            const varsToExport = new Set<string>();
+            let match;
+            while ((match = variableRegex.exec(code)) !== null) {
+                varsToExport.add(match[1]);
+            }
+
+            const exportList = Array.from(varsToExport);
+
+            // Generate export block: try { window['x'] = x; } catch(e){}
+            const exports = exportList.map(v => `try { window['${v}'] = ${v}; } catch(e){}`).join(' ');
+
+            // Add callback to notify runtime
+            const notify = `if (window.__harvest) window.__harvest();`;
+
+            code = `(async () => {
+        try {
+            ${code}
+            ${exports}
+            ${notify}
+        } catch(e) {
+            console.error(e);
+        }
+    })();`;
+        }
+
+        return code;
     }
 
     private harvestVariables(win: any, code: string) {
-        const injected = new Set(['plot', 'print', 'math', 'nerdamer', 'Algebrite', 'console', 'interact', 'pycalcly']);
+        const injected = new Set(['plot', 'print', 'math', 'nerdamer', 'Algebrite', 'console', 'interact', 'pycalcly', '__harvest']);
         const vars: Record<string, any> = {};
         const currentKeys = Object.getOwnPropertyNames(win);
 
@@ -540,19 +584,31 @@ class Runtime {
 
         // 2. Capture Let/Const/Class from top-level code (Regex parsing)
         // Note: This is a best-effort parser for top-level declarations
-        const variableRegex = /(?:let|const|var|class|function)\s+([a-zA-Z_$][0-9a-zA-Z_$]*)/g;
-        let match;
-        while ((match = variableRegex.exec(code)) !== null) {
-            const name = match[1];
-            if (!injected.has(name) && !this.initialKeys.has(name)) {
-                try {
-                    // We must evaluate to get the value because let/const are not on 'window'
-                    const value = win.eval(name);
-                    vars[name] = value;
-                } catch (e) {
-                    // Ignore if undefined or not actually in scope
-                }
-            }
+        // In async wrapper mode, variables are already exported to window, so step 1 catches them.
+        // But we keep this for sync mode logic.
+        if (code) {
+             const variableRegex = /(?:let|const|var|class|function)\s+([a-zA-Z_$][0-9a-zA-Z_$]*)/g;
+             let match;
+             while ((match = variableRegex.exec(code)) !== null) {
+                 const name = match[1];
+                 if (!injected.has(name) && !this.initialKeys.has(name)) {
+                     try {
+                         // We must evaluate to get the value because let/const are not on 'window'
+                         // But since we converted to var (step 2), they might be on window if sync.
+                         // If async wrapper, they are local unless exported.
+                         // If exported, they are on window (Step 1).
+                         // If local (e.g. inside loop), we can't access them anyway.
+
+                         // Double check if we missed it in Step 1 (e.g. if it wasn't enumerable?)
+                         if (!(name in vars)) {
+                              const value = win.eval(name);
+                              vars[name] = value;
+                         }
+                     } catch (e) {
+                         // Ignore if undefined or not actually in scope
+                     }
+                 }
+             }
         }
 
         this.scope = vars;
