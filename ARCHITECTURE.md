@@ -20,6 +20,7 @@ graph TD
         F[Runtime Engine (lib/runtime.ts)]
         G[Variable Harvester]
         H[Plotting Library (Plotly.js)]
+        J[Python Engine / Web Worker]
     end
 
     subgraph "AI Services (Google Gemini)"
@@ -29,6 +30,8 @@ graph TD
     A -- "Run Code" --> F
     B -- "Execute Command" --> F
     C -- "Insert Compiled JS" --> A
+    F -- "Async Call" --> J
+    J -- "Return Result" --> F
     F -- "Update Variables" --> G
     G -- "Display Variables" --> D
     F -- "Generate Plot" --> H
@@ -46,10 +49,19 @@ graph TD
 The Runtime Engine is the heart of the Calcly IDE. It is responsible for executing user-provided JavaScript code in a safe and isolated environment.
 
 -   **Sandboxing**: Code is executed within an ephemeral `iframe` to prevent it from interfering with the main React application. This ensures that the IDE remains stable and responsive, even if the user's code contains errors or infinite loops.
+-   **PyCalcly Integration**: The runtime injects a global `pycalcly` object into the iframe. This object acts as a bridge to the **Python Engine**, allowing JavaScript code to execute Python tasks (via `pycalcly.sympy.compute`).
 -   **Variable Harvesting**: After each execution, the Runtime Engine scans the `iframe`'s window object to identify any user-defined variables. These variables are then extracted and displayed in the **Workspace Viewer**, providing the user with a real-time view of their code's state.
 -   **State Persistence**: The Runtime Engine maintains the state of the user's session, including all defined variables and functions, until the page is refreshed. This allows users to build up complex calculations over time.
 
-### 2.2 Equation Lab (`components/EquationEditor.tsx`)
+### 2.2 The Python Engine (`src/workers/pyodideWorker.ts`)
+
+Calcly leverages WebAssembly to run a full Python environment in the browser, isolated in a Web Worker to prevent UI blocking.
+
+-   **Pyodide**: The core runtime that executes Python code.
+-   **SymPy Engine (`src/python/engine.py`)**: A custom Python wrapper that exposes a clean API (`ComputeRequest`, `BatchRequest`) for symbolic math operations.
+-   **Communication**: The main thread communicates with the worker via an asynchronous message-passing protocol, which is exposed to the user as the promise-based `pycalcly` API.
+
+### 2.3 Equation Lab (`components/EquationEditor.tsx`)
 
 The Equation Lab provides a bridge between traditional mathematical notation and executable code.
 
@@ -91,5 +103,6 @@ The Calcly IDE is designed to be deployed as a Docker container.
 -   **Framework**: React 19, Vite, TypeScript
 -   **UI**: Tailwind CSS, Lucide Icons, `react-resizable-panels`
 -   **Editor**: `@monaco-editor/react`
--   **Math**: `nerdamer` (Symbolic), `mathjs` (Numerical), `plotly.js` (Visualization)
+-   **Math**: `mathjs` (Numerical), `plotly.js` (Visualization)
+-   **Python Engine**: `Pyodide` (WASM), `SymPy` (Symbolic Library)
 -   **AI**: Google GenAI SDK (`@google/genai`)

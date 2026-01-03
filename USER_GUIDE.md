@@ -40,8 +40,37 @@ The AI Copilot is your personal assistant for solving math problems. It can help
 
 ## 4. Hybrid Math Engine
 
-The Calcly IDE uses a hybrid math engine that combines the power of numerical and symbolic math.
+The Calcly IDE uses a hybrid math engine that combines the power of fast numerical JavaScript and industrial-strength Python symbolic libraries.
 
--   **Numerical**: The numerical engine is powered by `math.js`.
--   **Symbolic**: The symbolic engine is powered by `nerdamer` and `Algebrite`.
+-   **Numerical**: The numerical engine is powered by `math.js` for fast client-side calculations.
+-   **Symbolic (Python)**: The symbolic engine is powered by **SymPy**, running inside the browser via Pyodide. This is exposed via the `pycalcly` object.
 -   **Auto Mode**: The AI intelligently routes tasks to the best engine for the job.
+
+### Using PyCalcly (SymPy)
+
+You can access the full power of SymPy directly from your code using the `pycalcly` global object. Since it runs in a separate thread, all calls are asynchronous (use `await`).
+
+**Basic Usage:**
+```javascript
+// Solve an equation: x^2 - 1 = 0
+const res = await pycalcly.sympy.compute({
+    expr: "x^2 - 1",
+    task: "solve",
+    solve_for: "x"
+});
+print(res.result_str); // Output: [{x: -1}, {x: 1}]
+```
+
+**Calculus:**
+```javascript
+// Integrate sin(x) from 0 to pi
+const res = await pycalcly.sympy.compute({
+    expr: "sin(x)",
+    task: "integrate",
+    args: ["x", 0, "pi"] // args map to SymPy function arguments
+});
+print(res.result_str); // Output: 2
+```
+
+**Available Tasks:**
+Common tasks include `solve`, `diff` (differentiate), `integrate`, `limit`, `simplify`, `expand`, `factor`, `laplace_transform`, and more.
