@@ -227,6 +227,32 @@
       background-color: #0f172a;
       /* very subtle stripe */
     }
+
+    /* PLOTLY DARK MODE OVERRIDES */
+    /* Fix "White Out" on active animation buttons */
+    .dark .updatemenu-button rect {
+      fill: #1e293b !important;
+      /* Default state match */
+    }
+
+    .dark .updatemenu-button rect:hover {
+      fill: #334155 !important;
+      /* Lighter on hover */
+    }
+
+    /* This is the critical fix for "Active" state */
+    /* Plotly uses inline styles for 'active', so we need !important to override */
+    .dark .updatemenu-button[data-active="true"] rect,
+    .dark .updatemenu-button rect[style*="fill: rgb(255, 255, 255)"],
+    .dark .updatemenu-button rect[style*="fill: #ffffff"] {
+      fill: #475569 !important;
+      /* Active state: Slate-600 */
+    }
+
+    /* Ensure text remains visible */
+    .dark .updatemenu-button text {
+      fill: #f1f5f9 !important;
+    }
   </style>
   <script type="importmap">
 {
