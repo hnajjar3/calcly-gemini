@@ -22,19 +22,25 @@ We believe powerful tools shouldn't require powerful hardware or complex setups.
 -   **Workspace Viewer**: Real-time inspection of all active variables (scalars, arrays, objects).
 -   **Plot Viewer**: Dedicated tab for interactive Plotly charts generated from your code.
 
-### 2. Equation Lab
+### 2. The Python Engine (PyCalcly)
+-   **Python in the Browser**: Leverages **Pyodide** (WebAssembly) to run a full Python environment directly in your browser.
+-   **SymPy Integration**: Provides access to the powerful **SymPy** library for robust symbolic mathematics (calculus, algebra, discrete math).
+-   **Future-Ready**: Built to eventually abstract the entire Python scientific ecosystem (NumPy, SciPy) for web use.
+-   **Usage**: Access it via the global `pycalcly` object (e.g., `pycalcly.sympy.compute({...})`).
+
+### 3. Equation Lab
 -   **Visual Math**: Type equations using a visual LaTeX editor (MathLive).
 -   **Native Compilation**: Uses **CortexJS Compute Engine** to compile math formulas directly into executable JavaScript code.
 -   **One-Click Insert**: seamless injection of math logic into your scripts.
 
-### 3. AI Copilot
+### 4. AI Copilot
 -   **Natural Language Coding**: Ask the AI: *"Generate a 3D surface plot of a damped sine wave"* and watch it write the code.
 -   **Code Review**: One-click auditing of your scripts for bugs and optimizations.
 -   **Scientific Publishing**: One-click generation of professional markdown reports from your code and results.
 
-### 4. Hybrid Math Engine
+### 5. Hybrid Math Engine
 -   **Numerical**: Powered by `math.js`.
--   **Symbolic**: Powered by `nerdamer` and `Algebrite` for algebra and calculus.
+-   **Symbolic**: Powered by **PyCalcly (SymPy)** for industrial-strength symbolic computation.
 -   **Auto Mode**: The AI intelligently routes tasks to the best engine.
 
 ---
